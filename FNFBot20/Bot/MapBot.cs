@@ -9,9 +9,11 @@ namespace FNFBot20
         
         public FNFSong song { get; set; }
         
-        public MapBot(string songDir)
+        public MapBot(string songDir) : this(songDir, null) { }
+
+        public MapBot(string songDir, string difficulty)
         {
-            song = new FNFSong(songDir);
+            song = new FNFSong(songDir, difficulty);
         }
 
         public List<FNFSong.FNFNote> GetHitNotes(FNFSong.FNFSection sect)

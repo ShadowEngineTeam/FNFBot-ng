@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using FridayNightFunkin;
 
 namespace FNFBot20
 {
@@ -136,15 +137,44 @@ namespace FNFBot20
                     yield return c;
         }
 
+        private static bool IsChartJson(string path)
+        {
+            try
+            {
+                using var doc = ChartUtils.LoadJson(path);
+                var root = doc.RootElement;
+                return PsychParser.IsPsychRoot(root)
+                    || VSliceParser.IsVSliceRoot(root)
+                    || CodenameParser.IsCodenameRoot(root);
+            }
+            catch { return false; }
+        }
+
         private int ScanDataRoot(string dataRoot, string label)
         {
             int found = 0;
             foreach (string songDir in Directory.GetDirectories(dataRoot))
             {
-                // Charts only; skip event files (they carry no playable notes).
-                var charts = Directory.GetFiles(songDir, "*.json")
-                    .Where(f => !Path.GetFileName(f).StartsWith("events", StringComparison.OrdinalIgnoreCase))
-                    .ToArray();
+                // Codename Engine: charts live in a charts/ subdirectory
+                string chartsDir = Path.Combine(songDir, "charts");
+                bool isCodename = Directory.Exists(chartsDir);
+
+                string[] charts;
+
+                if (isCodename)
+                {
+                    charts = Directory.GetFiles(chartsDir, "*.json")
+                        .Where(f => IsChartJson(f))
+                        .ToArray();
+                }
+                else
+                {
+                    charts = Directory.GetFiles(songDir, "*.json")
+                        .Where(f => !Path.GetFileName(f).StartsWith("events", StringComparison.OrdinalIgnoreCase))
+                        .Where(f => !Path.GetFileName(f).EndsWith("-metadata.json", StringComparison.OrdinalIgnoreCase))
+                        .Where(f => IsChartJson(f))
+                        .ToArray();
+                }
 
                 if (charts.Length == 0)
                     continue;
@@ -154,9 +184,25 @@ namespace FNFBot20
 
                 foreach (string chart in charts)
                 {
-                    var child = new TreeNode(Path.GetFileName(chart)) { Tag = chart };
-                    songNode.Nodes.Add(child);
-                    found++;
+                    string fileName = Path.GetFileName(chart);
+
+                    // Check if this is a V-Slice chart with multiple difficulties
+                    string[] difficulties = VSliceParser.ListDifficulties(chart);
+                    if (difficulties.Length > 0)
+                    {
+                        foreach (string diff in difficulties)
+                        {
+                            var child = new TreeNode($"{fileName} ({diff})") { Tag = new ChartTag(chart, diff) };
+                            songNode.Nodes.Add(child);
+                            found++;
+                        }
+                    }
+                    else
+                    {
+                        var child = new TreeNode(fileName) { Tag = chart };
+                        songNode.Nodes.Add(child);
+                        found++;
+                    }
                 }
 
                 treSngSelect.Nodes.Add(songNode);
@@ -176,14 +222,23 @@ namespace FNFBot20
 
         public void Play()
         {
-            string chartPath = treSngSelect.SelectedNode?.Tag as string;
-            if (string.IsNullOrEmpty(chartPath))
+            var tag = treSngSelect.SelectedNode?.Tag;
+
+            string chartPath = tag as string;
+            if (chartPath != null)
             {
-                WriteToConsole("Select a chart (.json) to play.");
+                bot.Load(chartPath);
                 return;
             }
 
-            bot.Load(chartPath);
+            var chartTag = tag as ChartTag;
+            if (chartTag != null)
+            {
+                bot.Load(chartTag.Path, chartTag.Difficulty);
+                return;
+            }
+
+            WriteToConsole("Select a chart (.json) to play.");
         }
 
         private void pnlTop_MouseDown(object sender, MouseEventArgs e)

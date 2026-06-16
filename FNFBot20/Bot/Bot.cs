@@ -37,7 +37,7 @@ namespace FNFBot20
             kBot.InitHooks();
         }
 
-        public void Load(string songDirectory)
+        public void Load(string songDirectory, string difficulty = null)
         {
             Form1.WriteToConsole("attempting to load " + songDirectory);
             if (!File.Exists(songDirectory))
@@ -51,7 +51,7 @@ namespace FNFBot20
 
             sngDir = songDirectory;
 
-            mBot = new MapBot(songDirectory);
+            mBot = new MapBot(songDirectory, difficulty);
 
             rBot = new RenderBot((int) mBot.song.Bpm);
 
@@ -69,7 +69,8 @@ namespace FNFBot20
             currentPlayThread.Start();
             Form1.currentThreads?.Add(currentPlayThread);
 
-            Form1.WriteToConsole($"Loaded {mBot.song.SongName} ({mBot.song.Format}) — {allNotes.Count} notes to hit. Press F1 to start.");
+            string diffInfo = string.IsNullOrEmpty(mBot.song.Difficulty) ? "" : $" [{mBot.song.Difficulty}]";
+            Form1.WriteToConsole($"Loaded {mBot.song.SongName}{diffInfo} ({mBot.song.Format}) — {allNotes.Count} notes to hit. Press F1 to start.");
             Form1.WriteToConsole($"Timing — offset {kBot.offset}ms (F2/F3), press {kBot.PressMs}ms (F4/F5), overhold {kBot.HoldReleaseMs}ms (F6/F7).");
             Form1.offset.Text = "Offset: " + kBot.offset;
         }
