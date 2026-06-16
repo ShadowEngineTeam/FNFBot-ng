@@ -57,7 +57,32 @@ namespace FNFBot20
 
         public static void WriteToConsole(string text)
         {
-            console.Text += "[" + DateTime.Now.ToShortTimeString() + "] " + text + "\n";
+            if (console == null)
+                return;
+
+            string line = "[" + DateTime.Now.ToShortTimeString() + "] " + text + "\n";
+            try
+            {
+                // Must run on the UI thread — the play thread calls this too, and touching
+                // RichTextBox.Text cross-thread corrupts/blanks the control (that was why the
+                // log cleared at song end). AppendText also avoids reallocating the buffer.
+                if (console.InvokeRequired)
+                    console.BeginInvoke((MethodInvoker)(() => AppendLog(line)));
+                else
+                    AppendLog(line);
+            }
+            catch { }
+        }
+
+        private static void AppendLog(string line)
+        {
+            // Keep the log from growing without bound over long sessions.
+            if (console.TextLength > 16000)
+                console.Text = console.Text.Substring(console.TextLength - 8000);
+
+            console.AppendText(line);
+            console.SelectionStart = console.TextLength;
+            console.ScrollToCaret();
         }
         
         private void button1_Click(object sender, EventArgs e)
@@ -106,6 +131,10 @@ namespace FNFBot20
                         string modData = Path.Combine(mod, "data");
                         if (Directory.Exists(modData))
                             found += ScanDataRoot(modData, Path.GetFileName(mod));
+
+                        string modSongs = Path.Combine(mod, "songs"); // Codename mods
+                        if (Directory.Exists(modSongs))
+                            found += ScanDataRoot(modSongs, Path.GetFileName(mod));
                     }
                 }
 
@@ -128,7 +157,9 @@ namespace FNFBot20
                 Path.Combine(root, "assets", "data"),                    // base game / Psych
                 Path.Combine(root, "assets", "shared", "data"),          // some forks
                 Path.Combine(root, "assets", "funkin_resources", "shared", "data"), // Shadow Engine
+                Path.Combine(root, "assets", "songs"),                   // Codename Engine
                 Path.Combine(root, "data"),                              // pointed straight at data
+                Path.Combine(root, "songs"),                             // pointed near songs
                 root                                                     // pointed straight at songs
             };
 

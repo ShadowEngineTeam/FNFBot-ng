@@ -37,7 +37,7 @@ namespace FridayNightFunkin
         public double Bpm { get; set; }
         public string SongName { get; set; } = "Unknown";
         public double Speed { get; set; } = 1;
-        public string Format { get; set; } = "psych_legacy";
+        public string Format { get; set; } = "legacy";
         public string Difficulty { get; set; } = "";
         public List<FNFSection> Sections { get; set; } = new List<FNFSection>();
 
@@ -55,29 +55,45 @@ namespace FridayNightFunkin
             else if (VSliceParser.IsVSliceRoot(root))
             {
                 string companion = VSliceParser.FindCompanionFile(path);
+                JsonDocument compDoc = null;
                 JsonElement? metaRoot = null;
-                if (companion != null)
+                try
                 {
-                    using var compDoc = ChartUtils.LoadJson(companion);
-                    metaRoot = compDoc.RootElement;
+                    if (companion != null)
+                    {
+                        compDoc = ChartUtils.LoadJson(companion);
+                        metaRoot = compDoc.RootElement;
+                    }
+                    VSliceParser.PopulateFNFSong(this, root, metaRoot, difficulty);
+                    Difficulty = difficulty ?? "normal";
                 }
-                VSliceParser.PopulateFNFSong(this, root, metaRoot, difficulty);
-                Difficulty = difficulty ?? "normal";
+                finally
+                {
+                    compDoc?.Dispose();
+                }
             }
             else if (CodenameParser.IsCodenameRoot(root))
             {
                 string[] metaCandidates = CodenameParser.GetMetaCandidates(path);
+                JsonDocument metaDoc = null;
                 JsonElement? metaRoot = null;
-                foreach (string candidate in metaCandidates)
+                try
                 {
-                    if (File.Exists(candidate))
+                    foreach (string candidate in metaCandidates)
                     {
-                        using var metaDoc = ChartUtils.LoadJson(candidate);
-                        metaRoot = metaDoc.RootElement;
-                        break;
+                        if (File.Exists(candidate))
+                        {
+                            metaDoc = ChartUtils.LoadJson(candidate);
+                            metaRoot = metaDoc.RootElement;
+                            break;
+                        }
                     }
+                    CodenameParser.PopulateFNFSong(this, root, metaRoot);
                 }
-                CodenameParser.PopulateFNFSong(this, root, metaRoot);
+                finally
+                {
+                    metaDoc?.Dispose();
+                }
             }
             else
             {

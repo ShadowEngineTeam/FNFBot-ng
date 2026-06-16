@@ -26,7 +26,9 @@ namespace FNFBot20
 
         private volatile bool _stop;
         private List<FNFSong.FNFNote> allNotes = new List<FNFSong.FNFNote>();
-        private double sectionLenMs = 1;
+        private static double sectionLenMs = 1;
+
+        public static double SectionLenMs => sectionLenMs;
 
         public Thread currentPlayThread { get; set; }
 
@@ -53,7 +55,11 @@ namespace FNFBot20
 
             mBot = new MapBot(songDirectory, difficulty);
 
-            rBot = new RenderBot((int) mBot.song.Bpm);
+            // Reuse one RenderBot so we don't attach a fresh Paint handler to the play field
+            // every time a song loads (which stacks handlers and causes flicker).
+            if (rBot == null)
+                rBot = new RenderBot();
+            rBot.SetScrollSpeed((float)mBot.song.Speed);
 
             allNotes = new List<FNFSong.FNFNote>();
             foreach (FNFSong.FNFSection sec in mBot.song.Sections)
@@ -62,6 +68,10 @@ namespace FNFBot20
 
             double crochet = mBot.song.Bpm > 0 ? 60.0 / mBot.song.Bpm * 1000.0 : 600.0;
             sectionLenMs = crochet * 4.0; // 4 beats per section
+
+            // Hand the whole note list to the renderer once; it scrolls on its own 60 fps
+            // timer, so the play loop below never has to touch rendering.
+            rBot.SetNotes(allNotes);
 
             watch = new Stopwatch();
 
@@ -82,13 +92,11 @@ namespace FNFBot20
             Form1.WriteToConsole("Play Thread created...");
 
             int hitIndex = 0;
-            int lastRenderedSection = -1;
             bool completedLogged = false;
 
             void ResetPlayback()
             {
                 hitIndex = 0;
-                lastRenderedSection = -1;
                 completedLogged = false;
                 nPlay.Clear();
                 ReleaseAllHolds();
@@ -118,7 +126,6 @@ namespace FNFBot20
                     if (!watch.IsRunning)
                     {
                         ResetPlayback();
-                        Form1.watchTime.Text = "Time: 0";
                         watch.Start();
                     }
 
@@ -133,18 +140,10 @@ namespace FNFBot20
 
                     ReleaseExpiredHolds(t);
 
-                    if (Form1.Rendering)
-                    {
-                        int sec = SectionAtTime(t);
-                        if (sec != lastRenderedSection && sec >= 0 && sec < mBot.song.Sections.Count)
-                        {
-                            lastRenderedSection = sec;
-                            Form1.watchTime.Text = "Time: " + (t / 1000.0).ToString("0.00");
-                            rBot.ListNotes(mBot.GetHitNotes(mBot.song.Sections[sec]));
-                        }
-                    }
-
-                    if (hitIndex >= allNotes.Count && !completedLogged)
+                    // Don't finish until every note is hit AND any final hold has run its
+                    // full length — otherwise the last sustain gets released the instant it's
+                    // pressed and registers as a miss.
+                    if (hitIndex >= allNotes.Count && !completedLogged && !AnyHoldActive())
                     {
                         completedLogged = true;
                         ReleaseAllHolds();
@@ -153,19 +152,15 @@ namespace FNFBot20
                         Form1.WriteToConsole("Completed!");
                     }
 
-                    Thread.Sleep(2);
+                    // 1ms cadence (timer resolution is raised in Program.Main), so notes are
+                    // checked ~1000x/sec and pressed within ~1ms of their target time.
+                    Thread.Sleep(1);
                 }
             }
             catch (Exception e)
             {
                 Form1.WriteToConsole("Exception on Play Thread\n" + e);
             }
-        }
-
-        private int SectionAtTime(double t)
-        {
-            if (t <= 0) return 0;
-            return (int) Math.Floor(t / sectionLenMs);
         }
 
         private void ReleaseExpiredHolds(double t)
@@ -178,6 +173,14 @@ namespace FNFBot20
                     kBot.KeyUp(dir);
                 }
             }
+        }
+
+        private bool AnyHoldActive()
+        {
+            for (int dir = 0; dir < 4; dir++)
+                if (holdTimes[dir] != 0)
+                    return true;
+            return false;
         }
 
         private void ReleaseAllHolds()

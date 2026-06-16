@@ -1,110 +1,159 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
-using FNFDataManager.Assets;
 using FridayNightFunkin;
 
 namespace FNFBot20
 {
     public class RenderBot
     {
-        public static float stepCrochet { get; set; }
+        private volatile List<FNFSong.FNFNote> _notes;
+        private float _speed = 1;
+        private bool _hooked;
+        private System.Windows.Forms.Timer _timer;
 
-        private volatile bool _renderPending;
-
-        public RenderBot(float bpm)
+        public void SetScrollSpeed(float speed)
         {
-            var crochet = (float)(60 / bpm * 1000);
-            stepCrochet = (float) (crochet / 4);
+            _speed = speed > 0 ? speed : 1;
         }
 
-        public void ListNotes(List<FNFSong.FNFNote> notes)
+        // Feed the renderer the whole (time-sorted) note list once. The Paint handler culls
+        // to the visible time window itself, so it never needs per-section updates from the
+        // play thread — that keeps rendering fully decoupled from note timing.
+        public void SetNotes(List<FNFSong.FNFNote> notes)
+        {
+            _notes = notes;
+            EnsureHooked();
+        }
+
+        private void EnsureHooked()
         {
             Panel field = Form1.pnlField;
-            if (field == null || field.IsDisposed || !field.IsHandleCreated)
+            if (field == null || field.IsDisposed || !field.IsHandleCreated || _hooked)
                 return;
 
-            if (_renderPending)
-                return;
-            _renderPending = true;
-
+            _hooked = true;
             try
             {
                 if (field.InvokeRequired)
-                    field.BeginInvoke((MethodInvoker)(() => Draw(field, notes)));
+                    field.Invoke((MethodInvoker)(() => HookField(field)));
                 else
-                    Draw(field, notes);
+                    HookField(field);
             }
-            catch
-            {
-                _renderPending = false;
-            }
+            catch { }
         }
 
-        private void Draw(Panel field, List<FNFSong.FNFNote> notes)
+        // One-time setup, always on the UI thread.
+        private void HookField(Panel field)
         {
-            try
+            // Double-buffer the panel so the per-frame clear+redraw doesn't flicker.
+            // DoubleBuffered is protected, so set it via reflection on the instance.
+            typeof(Control)
+                .GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                ?.SetValue(field, true);
+
+            field.Paint += OnFieldPaint;
+            field.BackColor = Color.FromArgb(20, 20, 30);
+
+            for (int i = field.Controls.Count - 1; i >= 0; i--)
             {
-                field.SuspendLayout();
+                var c = field.Controls[i];
+                field.Controls.RemoveAt(i);
+                c.Dispose();
+            }
+            field.BackgroundImage = null;
 
-                for (int i = field.Controls.Count - 1; i >= 0; i--)
+            // Steady ~60 fps repaint, independent of the play loop. The Paint handler reads
+            // the live song clock, so this alone produces smooth scrolling.
+            _timer = new System.Windows.Forms.Timer { Interval = 16 };
+            _timer.Tick += (s, e) =>
+            {
+                if (!Form1.Rendering)
+                    return;
+                if (Bot.Playing && Bot.watch != null)
+                    Form1.watchTime.Text = "Time: " + (Bot.watch.Elapsed.TotalMilliseconds / 1000.0).ToString("0.00");
+                field.Invalidate();
+            };
+            _timer.Start();
+        }
+
+        private void OnFieldPaint(object sender, PaintEventArgs e)
+        {
+            var notes = _notes;
+            var g = e.Graphics;
+            var field = (Panel)sender;
+
+            g.Clear(field.BackColor);
+
+            if (!Form1.Rendering || notes == null || notes.Count == 0)
+                return;
+
+            g.InterpolationMode = InterpolationMode.NearestNeighbor;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+
+            double currentTime = Bot.watch?.Elapsed.TotalMilliseconds ?? 0;
+            double sectionLenMs = Bot.SectionLenMs;
+            if (sectionLenMs <= 0) return;
+
+            double visibleWindow = sectionLenMs / _speed;
+            int h = field.Height > 0 ? field.Height : 1;
+
+            // _notes is sorted by time, so once a head is far enough in the future every
+            // later note is too — we can stop scanning.
+            foreach (var n in notes)
+            {
+                double timeDiff = n.Time - currentTime;
+                if (timeDiff > visibleWindow * 2) break;
+
+                double endDiff = (n.Length > 0 ? n.Time + n.Length : n.Time) - currentTime;
+                if (endDiff < -visibleWindow * 0.25) continue;
+
+                int dir = (int)n.Type % 4;
+                int x = dir * 32;
+
+                // Upscroll: notes scroll bottom→top, hit position at top (y=0).
+                int y = (int)((timeDiff / visibleWindow) * h);
+
+                if (n.Length > 0)
                 {
-                    Control c = field.Controls[i];
-                    field.Controls.RemoveAt(i);
-                    c.Dispose();
-                }
+                    // The sustain runs from the head (n.Time) to n.Time + n.Length, which is
+                    // later in time and therefore *below* the head on an upscroll field.
+                    double tailDiff = (n.Time + n.Length) - currentTime;
+                    int tailY = (int)((tailDiff / visibleWindow) * h);
 
-                int h = field.Height > 0 ? field.Height : 1;
+                    int trailTop = Math.Min(y, tailY);
+                    int trailBottom = Math.Max(y, tailY);
+                    int len = trailBottom - trailTop;
+                    if (len < 4) len = 4;
 
-                foreach (FNFSong.FNFNote n in notes)
-                {
-                    int dir = (int) n.Type % 4;
-                    int x = dir * 32;
-                    int y = (int) (Math.Floor(remapToRange((float) n.Time, 0, 16 * stepCrochet, 0, h)) % h);
-
-                    if (n.Length > 0)
+                    if (trailBottom >= -32 && trailTop <= h + 32)
                     {
-                        int len = (int) remapToRange((float) n.Length, 0, 16 * stepCrochet, 0, h);
-                        if (len < 4) len = 4;
-
-                        var hold = new Panel
-                        {
-                            Size = new Size(14, len),
-                            Location = new Point(x + 9, y),
-                            BackgroundImage = TrailImage(dir),
-                            BackgroundImageLayout = ImageLayout.Stretch
-                        };
-                        field.Controls.Add(hold);
-                        hold.SendToBack();
+                        var trail = TrailImage(dir);
+                        if (trail != null)
+                            g.DrawImage(trail, x + 9, trailTop, 14, len); // upright, no flip
                     }
-
-                    UserControl arrow = CreateArrow(dir);
-                    arrow.Location = new Point(x, y);
-                    field.Controls.Add(arrow);
-                    arrow.BringToFront();
                 }
 
-                field.ResumeLayout();
-            }
-            catch (Exception e)
-            {
-                Form1.WriteToConsole("Failed to render notes.\n" + e.Message);
-            }
-            finally
-            {
-                _renderPending = false;
+                // Head arrow on top of the tail.
+                if (y >= -32 && y <= h + 32)
+                {
+                    var arrow = ArrowImage(dir);
+                    if (arrow != null)
+                        g.DrawImage(arrow, x, y, 32, 32);
+                }
             }
         }
 
-        private static UserControl CreateArrow(int dir)
+        private static Image ArrowImage(int dir)
         {
             switch (dir)
             {
-                case 0:  return new LeftArrow();
-                case 1:  return new DownArrow();
-                case 2:  return new UpArrow();
-                default: return new RightArrow();
+                case 0: return Properties.Resources.LeftArrow;
+                case 1: return Properties.Resources.DownArrow;
+                case 2: return Properties.Resources.UpArrow;
+                default: return Properties.Resources.RightArrow;
             }
         }
 
@@ -112,16 +161,11 @@ namespace FNFBot20
         {
             switch (dir)
             {
-                case 0:  return Properties.Resources.purpleTrail; // left
-                case 1:  return Properties.Resources.blueTrail;   // down
-                case 2:  return Properties.Resources.greenTrail;  // up
-                default: return Properties.Resources.redTrail;    // right
+                case 0: return Properties.Resources.purpleTrail;
+                case 1: return Properties.Resources.blueTrail;
+                case 2: return Properties.Resources.greenTrail;
+                default: return Properties.Resources.redTrail;
             }
-        }
-
-        public static float remapToRange(float value, float start1, float stop1, float start2, float stop2) // stolen from https://github.com/HaxeFlixel/flixel/blob/b38c74b85170d7457353881713a796310187ddd2/flixel/math/FlxMath.hx#L285
-        {
-            return start2 + (value - start1) * ((stop2 - start2) / (stop1 - start1));
         }
     }
 }

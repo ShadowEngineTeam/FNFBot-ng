@@ -42,10 +42,12 @@ namespace FridayNightFunkin
                 song.Format = fmt.GetString();
                 if (song.Format != null && song.Format.StartsWith("psych_v1"))
                     isV1 = true;
+                else if (song.Format == "psych_legacy")
+                    song.Format = "legacy";
             }
             else
             {
-                song.Format = isV1 ? "psych_v1" : "psych_legacy";
+                song.Format = isV1 ? "psych_v1" : "legacy";
             }
 
             song.Bpm = ChartUtils.GetDouble(songObj, "bpm", 100);

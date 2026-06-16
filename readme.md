@@ -7,7 +7,7 @@ FNFBot doesn't know where the song starts on its own — you press **F1** at the
 moment to start/stop it in sync. So don't open issues saying it "hits notes early" or
 whatever.
 
-## 6K/9K will NOT be added, stop asking for it ##
+## extra keys won't be added, stop asking for it ##
 
 ### What is FNFBot?
 
@@ -17,8 +17,9 @@ FNFBot is a bot program that lets users automatically play Friday Night Funkin' 
 
 FNFBot reads chart `.json` files directly. It supports:
 
-- The **base game** chart format (both legacy and V-Slice)
-- **Psych Engine** charts (both `psych_legacy` and `psych_v1`)
+- The **base game** chart format (both `legacy` and V-Slice)
+- **Psych Engine** / **Shadow Engine** charts (`psych_legacy` and `psych_v1`)
+- **Codename Engine** charts
 
 ## Building
 
