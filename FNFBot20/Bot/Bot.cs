@@ -1,10 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
-using WindowsInput;
-using WindowsInput.Native;
 using FridayNightFunkin;
 
 namespace FNFBot20
@@ -12,9 +10,9 @@ namespace FNFBot20
     public class Bot
     {
         public static bool Playing = false;
-        
+
         public static Stopwatch watch { get; set; }
-        
+
         public string sngDir { get; set; }
 
         public static bool ended = false;
@@ -22,22 +20,23 @@ namespace FNFBot20
         public MapBot mBot;
         public RenderBot rBot;
 
-        public float[] holdTimes = {0,0,0,0};
+        public double[] holdTimes = {0, 0, 0, 0};
 
         public List<FNFSong.FNFNote> nPlay = new List<FNFSong.FNFNote>();
-        
-        public InputSimulator simulator = new InputSimulator();
-        
+
+        private volatile bool _stop;
+        private List<FNFSong.FNFNote> allNotes = new List<FNFSong.FNFNote>();
+        private double sectionLenMs = 1;
+
         public Thread currentPlayThread { get; set; }
-        
+
         public Bot()
         {
             // Create keyhooks with KeyBot
             kBot = new KeyBot();
             kBot.InitHooks();
-            
         }
-        
+
         public void Load(string songDirectory)
         {
             Form1.WriteToConsole("attempting to load " + songDirectory);
@@ -47,148 +46,114 @@ namespace FNFBot20
                 return;
             }
 
-            currentPlayThread?.Abort();
+            _stop = true;
             Form1.currentThreads?.Remove(currentPlayThread);
 
             sngDir = songDirectory;
-            
-            // basic loading
-            // get a FNFSong through map bot
+
             mBot = new MapBot(songDirectory);
 
-            // Create the render bot (renders notes to the screen)
             rBot = new RenderBot((int) mBot.song.Bpm);
-            
-            currentPlayThread = new Thread(PlayThread);
-            currentPlayThread.Start();
-            
-            Form1.currentThreads?.Add(currentPlayThread);
-            
-            Form1.WriteToConsole("Loaded "  + mBot.song.SongName + " with " + mBot.song.Sections.Count + " sections.");
+
+            allNotes = new List<FNFSong.FNFNote>();
+            foreach (FNFSong.FNFSection sec in mBot.song.Sections)
+                allNotes.AddRange(mBot.GetHitNotes(sec));
+            allNotes.Sort((a, b) => a.Time.CompareTo(b.Time));
+
+            double crochet = mBot.song.Bpm > 0 ? 60.0 / mBot.song.Bpm * 1000.0 : 600.0;
+            sectionLenMs = crochet * 4.0; // 4 beats per section
 
             watch = new Stopwatch();
-            
+
+            currentPlayThread = new Thread(PlayThread) { IsBackground = true };
+            currentPlayThread.Start();
+            Form1.currentThreads?.Add(currentPlayThread);
+
+            Form1.WriteToConsole($"Loaded {mBot.song.SongName} ({mBot.song.Format}) — {allNotes.Count} notes to hit. Press F1 to start.");
+            Form1.WriteToConsole($"Timing — offset {kBot.offset}ms (F2/F3), press {kBot.PressMs}ms (F4/F5), overhold {kBot.HoldReleaseMs}ms (F6/F7).");
             Form1.offset.Text = "Offset: " + kBot.offset;
         }
-        
-        private int notesPlayed = 0;
+
         private void PlayThread()
         {
             ended = false;
+            _stop = false;
             Form1.WriteToConsole("Play Thread created...");
-            nPlay.Clear();
-            int currentSect = 0;
-            int notesPPlayed = 0;
-            int lastRendered = 0;
+
+            int hitIndex = 0;
+            int lastRenderedSection = -1;
+            bool completedLogged = false;
+
+            void ResetPlayback()
+            {
+                hitIndex = 0;
+                lastRenderedSection = -1;
+                completedLogged = false;
+                nPlay.Clear();
+                ReleaseAllHolds();
+            }
+
+            ResetPlayback();
+
             try
             {
                 while (true)
                 {
-                    if (!watch.IsRunning && Playing)
+                    if (_stop)
                     {
+                        ReleaseAllHolds();
+                        return;
+                    }
+
+                    if (!Playing)
+                    {
+                        if (watch.IsRunning)
+                            watch.Reset();
+                        ReleaseAllHolds();
+                        Thread.Sleep(40);
+                        continue;
+                    }
+
+                    if (!watch.IsRunning)
+                    {
+                        ResetPlayback();
                         Form1.watchTime.Text = "Time: 0";
                         watch.Start();
                     }
-                    else if (!Playing && watch.IsRunning)
+
+                    double t = watch.Elapsed.TotalMilliseconds;
+
+                    while (hitIndex < allNotes.Count &&
+                           t + kBot.offset >= allNotes[hitIndex].Time - 22)
                     {
-                        Form1.console.Text = "";
-                        watch.Reset();
+                        HandleNote(allNotes[hitIndex], t);
+                        hitIndex++;
                     }
 
+                    ReleaseExpiredHolds(t);
 
-                    if (!Playing)
+                    if (Form1.Rendering)
                     {
-                        Thread.Sleep(100);
-                        continue;   
-                    }
-
-
-                    
-                    int i = 0;
-
-                    
-                    
-                    FNFSong.FNFSection sect = mBot.song.Sections[currentSect];
-                    
-                    if (notesPPlayed >= sect.Notes.Count)
-                    {
-                        currentSect++;
-                        notesPPlayed = 0;
-                        sect = mBot.song.Sections[currentSect];
-                        Form1.WriteToConsole("Next section!");
-                    }
-                    
-                    List<FNFSong.FNFNote> notesToPlay = mBot.GetHitNotes(sect);
-
-                    if (notesToPlay.Count == 0)
-                    {
-                        currentSect++;
-                        Form1.WriteToConsole("Skiping to section " + currentSect);
-                    }
-                    else if (lastRendered != currentSect)
-                    {
-                        lastRendered = currentSect;
-                        if (Form1.Rendering)
+                        int sec = SectionAtTime(t);
+                        if (sec != lastRenderedSection && sec >= 0 && sec < mBot.song.Sections.Count)
                         {
-                            Form1.watchTime.Text = "Time: " + watch.Elapsed.TotalSeconds.ToString();
-                            Thread list = new Thread(() => rBot.ListNotes(mBot.GetHitNotes(sect)));
-                            Form1.currentThreads.Add(list);
-                            list.Start();
+                            lastRenderedSection = sec;
+                            Form1.watchTime.Text = "Time: " + (t / 1000.0).ToString("0.00");
+                            rBot.ListNotes(mBot.GetHitNotes(mBot.song.Sections[sec]));
                         }
                     }
 
-                    foreach (FNFSong.FNFNote n in notesToPlay)
+                    if (hitIndex >= allNotes.Count && !completedLogged)
                     {
-
-                        // ke default hit windows or something like em
-
-                        if ((float)watch.Elapsed.TotalMilliseconds + kBot.offset >= (double) (n.Time - 22) && !nPlay.Contains(n))
-                        {
-                            HandleNote(n);
-                            nPlay.Add(n);
-                            notesPPlayed++;
-                        }
-
-                        i++;
-
-                    }
-                    
-                    // check if we should let go of holds
-                    
-                    for (int ii = 0; ii < 4; ii++)
-                    {
-                        if (watch.ElapsedMilliseconds > holdTimes[ii] && holdTimes[ii] != 0)
-                        {
-                            holdTimes[ii] = 0;
-                            switch (ii)
-                            {
-                                case 0:
-                                    simulator.Keyboard.KeyUp(VirtualKeyCode.LEFT);
-                                    break;
-                                case 1:
-                                    simulator.Keyboard.KeyUp(VirtualKeyCode.DOWN);
-                                    break;
-                                case 2:
-                                    simulator.Keyboard.KeyUp(VirtualKeyCode.UP);
-                                    break;
-                                case 3:
-                                    simulator.Keyboard.KeyUp(VirtualKeyCode.RIGHT);
-                                    break;
-                            }
-                        }
+                        completedLogged = true;
+                        ReleaseAllHolds();
+                        Playing = false;
+                        ended = true;
+                        Form1.WriteToConsole("Completed!");
                     }
 
-                    if (!Playing)
-                        break;
-                    
-
-                    // Form1.WriteToConsole("Section See: " + sectionSee);
-                    notesPlayed = 0;
+                    Thread.Sleep(2);
                 }
-                Form1.console.Text = "";
-                Playing = false;
-                Form1.WriteToConsole("Completed!");
-                ended = true;
             }
             catch (Exception e)
             {
@@ -196,70 +161,52 @@ namespace FNFBot20
             }
         }
 
-        private bool[] boolAr = new[] {false, false, false, false};
-        
-        public void HandleNote(FNFSong.FNFNote n)
+        private int SectionAtTime(double t)
         {
-            bool shouldHold = n.Length > 0;
-            if (shouldHold)
-                holdTimes[(int)n.Type % 4] = ((float)n.Length + (float)watch.Elapsed.TotalMilliseconds) + 10;
-            
+            if (t <= 0) return 0;
+            return (int) Math.Floor(t / sectionLenMs);
+        }
 
-            switch (n.Type)
+        private void ReleaseExpiredHolds(double t)
+        {
+            for (int dir = 0; dir < 4; dir++)
             {
-                case FNFSong.NoteType.Left:
-                case FNFSong.NoteType.RLeft:
-                    if (shouldHold)
-                    {
-                        simulator.Keyboard.KeyDown(VirtualKeyCode.LEFT);
-                        Thread.Sleep(Convert.ToInt32(n.Length));
-                        simulator.Keyboard.KeyUp(VirtualKeyCode.LEFT);
-                    }
-                    else
-                    {
-                        kBot.KeyPress(0x25, 0x1e);
-                    }
+                if (holdTimes[dir] != 0 && t > holdTimes[dir])
+                {
+                    holdTimes[dir] = 0;
+                    kBot.KeyUp(dir);
+                }
+            }
+        }
 
-                    break;
-                case FNFSong.NoteType.Down:
-                case FNFSong.NoteType.RDown:
-                    if (shouldHold)
-                    {
+        private void ReleaseAllHolds()
+        {
+            for (int dir = 0; dir < 4; dir++)
+            {
+                if (holdTimes[dir] != 0)
+                {
+                    holdTimes[dir] = 0;
+                    kBot.KeyUp(dir);
+                }
+            }
+        }
 
-                        simulator.Keyboard.KeyDown(VirtualKeyCode.DOWN);
-                    }
-                    else
-                        kBot.KeyPress(0x28, 0x1f);
+        public void HandleNote(FNFSong.FNFNote n, double now)
+        {
+            int dir = (int) n.Type % 4;
+            bool shouldHold = n.Length > 0;
 
-                    break;
-                case FNFSong.NoteType.Up:
-                case FNFSong.NoteType.RUp:
-                    if (shouldHold)
-                    {
+            if (holdTimes[dir] != 0)
+            {
+                kBot.KeyUp(dir);
+                holdTimes[dir] = 0;
+            }
 
-                        simulator.Keyboard.KeyDown(VirtualKeyCode.UP);
+            kBot.KeyDown(dir);
 
-                    }
-                    else
-                        kBot.KeyPress(0x26, 0x11);
-
-
-                    break;
-                case FNFSong.NoteType.Right:
-                case FNFSong.NoteType.RRight:
-                    if (shouldHold)
-                    {
-
-                        simulator.Keyboard.KeyDown(VirtualKeyCode.RIGHT);
-
-                    }
-                    else
-                        kBot.KeyPress(0x27, 0x20);
-
-
-                    break;
-            } 
-            notesPlayed++;
+            holdTimes[dir] = shouldHold
+                ? n.Time + n.Length + kBot.HoldReleaseMs
+                : now + kBot.PressMs;
         }
     }
 }

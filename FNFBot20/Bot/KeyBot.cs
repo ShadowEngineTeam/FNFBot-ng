@@ -10,142 +10,230 @@ namespace FNFBot20
    
     public class KeyBot
     {
-        public LowLevelKeyboardHook kHook { get; set; }
+        private const string SettingsFile = "bot.settings";
 
         public int offset = 25;
-        
+        public int PressMs = 40;
+        public int HoldReleaseMs = 20;
+
         public KeyBot()
         {
-            kHook = new LowLevelKeyboardHook();
+            LoadSettings();
+        }
+
+        private void LoadSettings()
+        {
             try
             {
-                if (!File.Exists("bot.settings"))
-                    File.WriteAllText("bot.settings", offset.ToString());
-                else
+                if (!File.Exists(SettingsFile))
                 {
-                    offset = Convert.ToInt32(File.ReadAllText("bot.settings"));
+                    SaveSettings();
+                    return;
+                }
+
+                foreach (string raw in File.ReadAllLines(SettingsFile))
+                {
+                    string line = raw.Trim();
+                    if (line.Length == 0)
+                        continue;
+
+                    int eq = line.IndexOf('=');
+                    if (eq < 0)
+                    {
+                        // legacy format: the whole file was just the offset number.
+                        if (int.TryParse(line, out int legacy))
+                            offset = legacy;
+                        continue;
+                    }
+
+                    string key = line.Substring(0, eq).Trim().ToLowerInvariant();
+                    if (!int.TryParse(line.Substring(eq + 1).Trim(), out int num))
+                        continue;
+
+                    switch (key)
+                    {
+                        case "offset": offset = num; break;
+                        case "press": PressMs = Math.Max(1, num); break;
+                        case "hold": HoldReleaseMs = num; break;
+                    }
                 }
             }
-            catch (Exception e)
+            catch
             {
                 Form1.WriteToConsole("Failed to load config....");
             }
         }
 
-        public void InitHooks()
+        public void SaveSettings()
         {
-            kHook.OnKeyPressed += (sender, keys) =>
+            try
             {
-                switch (keys)
-                {
-                    case Keys.F1:
-                        Bot.Playing = !Bot.Playing;
-                        Form1.WriteToConsole("Playing: " + Bot.Playing);
-                        if (Bot.ended)
-                            Form1.instance.Play();
-                        break;
-                    case Keys.F2:
-                        offset++;
-                        Form1.WriteToConsole("Offset: " + offset);
-                        Form1.offset.Text = "Offset: " + offset;
-                        break;
-                    case Keys.F3:
-                        offset--;
-                        Form1.WriteToConsole("Offset: " + offset);
-                        Form1.offset.Text = "Offset: " + offset;
-                        break;
-                }
-            };
-            kHook.HookKeyboard();
+                File.WriteAllText(SettingsFile,
+                    $"offset={offset}\npress={PressMs}\nhold={HoldReleaseMs}\n");
+            }
+            catch
+            {
+                // non-fatal
+            }
         }
 
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
+        // Virtual-key codes F1..F7.
+        private static readonly int[] FunctionKeys = { 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76 };
+
+        private Thread _pollThread;
+        private volatile bool _polling;
+
+        public void InitHooks()
+        {
+            if (_polling)
+                return;
+            _polling = true;
+            _pollThread = new Thread(PollLoop) { IsBackground = true, Name = "FNFBot-hotkeys" };
+            _pollThread.Start();
+        }
 
         public void StopHooks()
         {
-            kHook.UnHookKeyboard();
+            _polling = false;
         }
-        
+
+        private void PollLoop()
+        {
+            var prev = new bool[FunctionKeys.Length];
+            while (_polling)
+            {
+                for (int i = 0; i < FunctionKeys.Length; i++)
+                {
+                    bool down = (GetAsyncKeyState(FunctionKeys[i]) & 0x8000) != 0;
+                    if (down && !prev[i])
+                        OnHotkey(i);
+                    prev[i] = down;
+                }
+                Thread.Sleep(20);
+            }
+        }
+
+        private void OnHotkey(int index)
+        {
+            switch (index)
+            {
+                case 0: // F1
+                    Bot.Playing = !Bot.Playing;
+                    Form1.WriteToConsole("Playing: " + Bot.Playing);
+                    if (Bot.ended)
+                        Form1.instance.Play();
+                    break;
+                case 1: // F2
+                    offset++;
+                    Form1.WriteToConsole("Offset: " + offset);
+                    Form1.offset.Text = "Offset: " + offset;
+                    SaveSettings();
+                    break;
+                case 2: // F3
+                    offset--;
+                    Form1.WriteToConsole("Offset: " + offset);
+                    Form1.offset.Text = "Offset: " + offset;
+                    SaveSettings();
+                    break;
+                case 3: // F4
+                    PressMs += 5;
+                    Form1.WriteToConsole("Press hold: " + PressMs + "ms");
+                    SaveSettings();
+                    break;
+                case 4: // F5
+                    PressMs = Math.Max(1, PressMs - 5);
+                    Form1.WriteToConsole("Press hold: " + PressMs + "ms");
+                    SaveSettings();
+                    break;
+                case 5: // F6
+                    HoldReleaseMs += 5;
+                    Form1.WriteToConsole("Sustain overhold: " + HoldReleaseMs + "ms");
+                    SaveSettings();
+                    break;
+                case 6: // F7
+                    HoldReleaseMs -= 5;
+                    Form1.WriteToConsole("Sustain overhold: " + HoldReleaseMs + "ms");
+                    SaveSettings();
+                    break;
+            }
+        }
+
+        // --- Key injection via SendInput ---------------------------------------------
+        // Lime uses SDL, which what also Shadow Engine uses. we identify keys by their hardware
+        // SCANCODE, not the virtual-key code, and the arrow-key scancodes are identical
+        // across both versions. So we inject the real extended arrow-key scancodes; sending
+        // only a VK (or a zero scancode) is silently ignored by SDL-based games.
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct INPUT
+        {
+            public uint type;
+            public InputUnion U;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        private struct InputUnion
+        {
+            [FieldOffset(0)] public MOUSEINPUT mi;
+            [FieldOffset(0)] public KEYBDINPUT ki;
+            [FieldOffset(0)] public HARDWAREINPUT hi;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct KEYBDINPUT
+        {
+            public ushort wVk;
+            public ushort wScan;
+            public uint dwFlags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MOUSEINPUT
+        {
+            public int dx, dy;
+            public uint mouseData, dwFlags, time;
+            public IntPtr dwExtraInfo;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct HARDWAREINPUT
+        {
+            public uint uMsg;
+            public ushort wParamL, wParamH;
+        }
+
         [DllImport("user32.dll", SetLastError = true)]
-        static extern void keybd_event(byte bVk, byte bScan, int dwFlags, int dwExtraInfo); 
-        
-        public const int KEYEVENTF_EXTENDEDKEY = 0x0001; //Key down flag
-        public const int KEYEVENTF_KEYUP = 0x0002; //Key up flag
+        private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
-        public void KeyPress(byte key, byte scan)
+        private const uint INPUT_KEYBOARD = 1;
+        private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
+        private const uint KEYEVENTF_KEYUP = 0x0002;
+        private const uint KEYEVENTF_SCANCODE = 0x0008;
+
+        private static readonly ushort[] ArrowScan = { 0x4B, 0x50, 0x48, 0x4D };
+        private static void SendScan(ushort scan, bool keyUp)
         {
-            keybd_event(key, scan, KEYEVENTF_EXTENDEDKEY, 0);
-            Thread.Sleep(25);
-            keybd_event(key, scan, KEYEVENTF_KEYUP, 0);
-        }
-    }
-    
-    
-    
-     // LowLevelKeyboard Hook created by https://stackoverflow.com/a/46014022
-    public class LowLevelKeyboardHook
-    {
-        private const int WH_KEYBOARD_LL = 13;
-        private const int WM_KEYDOWN = 0x0100;
-        private const int WM_SYSKEYDOWN = 0x0104;
-        private const int WM_KEYUP = 0x101;
-        private const int WM_SYSKEYUP = 0x105;
+            uint flags = KEYEVENTF_SCANCODE | KEYEVENTF_EXTENDEDKEY;
+            if (keyUp) flags |= KEYEVENTF_KEYUP;
 
-        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
-
-        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
-
-        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr GetModuleHandle(string lpModuleName);
-
-        public delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
-
-        public event EventHandler<Keys> OnKeyPressed;
-        public event EventHandler<Keys> OnKeyUnpressed;
-
-        private LowLevelKeyboardProc _proc;
-        private IntPtr _hookID = IntPtr.Zero;
-
-        public LowLevelKeyboardHook()
-        {
-            _proc = HookCallback;
-        }
-
-        public void HookKeyboard()
-        {
-            _hookID = SetHook(_proc);
-        }
-
-        public void UnHookKeyboard()
-        {
-            UnhookWindowsHookEx(_hookID);
-        }
-
-        private IntPtr SetHook(LowLevelKeyboardProc proc)
-        {
-            using (Process curProcess = Process.GetCurrentProcess())
-            using (ProcessModule curModule = curProcess.MainModule)
+            var input = new INPUT
             {
-                return SetWindowsHookEx(WH_KEYBOARD_LL, proc, GetModuleHandle(curModule.ModuleName), 0);
-            }
+                type = INPUT_KEYBOARD,
+                U = new InputUnion
+                {
+                    ki = new KEYBDINPUT { wVk = 0, wScan = scan, dwFlags = flags, time = 0, dwExtraInfo = IntPtr.Zero }
+                }
+            };
+            SendInput(1, new[] { input }, Marshal.SizeOf<INPUT>());
         }
 
-        private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
-        {
-            if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)
-            {
-                int vkCode = Marshal.ReadInt32(lParam);
+        public void KeyDown(int dir) => SendScan(ArrowScan[dir], false);
 
-                OnKeyPressed.Invoke(this, ((Keys)vkCode));
-            }
-
-            return CallNextHookEx(_hookID, nCode, wParam, lParam);            
-        }
+        public void KeyUp(int dir) => SendScan(ArrowScan[dir], true);
     }
-        
 }

@@ -61,8 +61,6 @@ namespace FNFBot20
         
         private void button1_Click(object sender, EventArgs e)
         {
-            foreach(Thread t in currentThreads)
-                t.Abort();
             bot.kBot.StopHooks();
             Environment.Exit(0);
         }
@@ -87,44 +85,90 @@ namespace FNFBot20
                 Form1.WriteToConsole("Directory does not exist");
                 return;
             }
-            
-            Form1.WriteToConsole("Directory found! Retrieving data...");
 
+            Form1.WriteToConsole("Directory found! Retrieving data...");
+            treSngSelect.Nodes.Clear();
 
             try
             {
-                // 1.8
-                if (Directory.Exists($@"{txtbxDir.Text}\assets\data\songs"))
+                string root = txtbxDir.Text;
+                int found = 0;
+
+                foreach (string dataRoot in GetDataRoots(root))
+                    found += ScanDataRoot(dataRoot, null);
+
+                string modsDir = Path.Combine(root, "mods");
+                if (Directory.Exists(modsDir))
                 {
-                    foreach (string s in Directory.GetDirectories($@"{txtbxDir.Text}\assets\data\songs"))
+                    foreach (string mod in Directory.GetDirectories(modsDir))
                     {
-                        // linq magic
-                        // in simple terms, convert a list of files into a TreeNode[],
-                        // then make a new TreeNode with the children of the one we made
-                        var children = Directory.GetFiles(s).Select(child => new TreeNode(LeadingPath(child)));
-                        treSngSelect.Nodes.Add(new TreeNode(LeadingPath(s), children.ToArray()));
+                        string modData = Path.Combine(mod, "data");
+                        if (Directory.Exists(modData))
+                            found += ScanDataRoot(modData, Path.GetFileName(mod));
                     }
                 }
+
+                if (found == 0)
+                    WriteToConsole("No charts found. Point at the engine/mod folder, an 'assets' folder, or a 'data' folder.");
                 else
-                    foreach (string s in Directory.GetDirectories($@"{txtbxDir.Text}\assets\data"))
-                    {
-                        // linq magic
-                        // in simple terms, convert a list of files into a TreeNode[],
-                        // then make a new TreeNode with the children of the one we made
-                        var children = Directory.GetFiles(s).Select(child => new TreeNode(LeadingPath(child)));
-                        treSngSelect.Nodes.Add(new TreeNode(LeadingPath(s), children.ToArray()));
-                    }
+                    WriteToConsole($"Found {found} chart(s).");
             }
             catch (Exception ee)
             {
                 WriteToConsole("Failed to retrieve data.\n" + ee);
             }
         }
-        
-        private string LeadingPath(string path) => path.Split('\\').Last();
-        
+
+        private static IEnumerable<string> GetDataRoots(string root)
+        {
+            string[] candidates =
+            {
+                Path.Combine(root, "assets", "data", "songs"),          // FNF 1.8
+                Path.Combine(root, "assets", "data"),                    // base game / Psych
+                Path.Combine(root, "assets", "shared", "data"),          // some forks
+                Path.Combine(root, "assets", "funkin_resources", "shared", "data"), // Shadow Engine
+                Path.Combine(root, "data"),                              // pointed straight at data
+                root                                                     // pointed straight at songs
+            };
+
+            foreach (string c in candidates)
+                if (Directory.Exists(c))
+                    yield return c;
+        }
+
+        private int ScanDataRoot(string dataRoot, string label)
+        {
+            int found = 0;
+            foreach (string songDir in Directory.GetDirectories(dataRoot))
+            {
+                // Charts only; skip event files (they carry no playable notes).
+                var charts = Directory.GetFiles(songDir, "*.json")
+                    .Where(f => !Path.GetFileName(f).StartsWith("events", StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+
+                if (charts.Length == 0)
+                    continue;
+
+                string songName = Path.GetFileName(songDir);
+                var songNode = new TreeNode(label == null ? songName : $"{songName} [{label}]");
+
+                foreach (string chart in charts)
+                {
+                    var child = new TreeNode(Path.GetFileName(chart)) { Tag = chart };
+                    songNode.Nodes.Add(child);
+                    found++;
+                }
+
+                treSngSelect.Nodes.Add(songNode);
+            }
+            return found;
+        }
+
         private void treSngSelect_NodeMouseDoubleClick(object sender, TreeNodeMouseClickEventArgs e)
         {
+            if (treSngSelect.SelectedNode?.Tag == null)
+                return; // a song folder, not a chart
+
             WriteToConsole("Selecting " + treSngSelect.SelectedNode.Text);
 
             Play();
@@ -132,9 +176,14 @@ namespace FNFBot20
 
         public void Play()
         {
-            
-            bot.Load(txtbxDir.Text +
-                     $@"\assets\data\{(Directory.Exists(txtbxDir.Text + @"\assets\data\songs") ? "songs\\" : "")}{treSngSelect.SelectedNode.Parent?.Text}\{treSngSelect.SelectedNode.Text}");
+            string chartPath = treSngSelect.SelectedNode?.Tag as string;
+            if (string.IsNullOrEmpty(chartPath))
+            {
+                WriteToConsole("Select a chart (.json) to play.");
+                return;
+            }
+
+            bot.Load(chartPath);
         }
 
         private void pnlTop_MouseDown(object sender, MouseEventArgs e)
