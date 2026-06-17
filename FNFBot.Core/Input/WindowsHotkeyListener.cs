@@ -1,0 +1,55 @@
+using System;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+using System.Threading;
+
+namespace FNFBot.Core.Input
+{
+    /// <summary>
+    /// Detects F1-F7 by polling GetAsyncKeyState on a background thread. Deliberately not a
+    /// WH_KEYBOARD_LL hook — a global low-level hook sits in the system input path and would
+    /// lag the game whenever the bot is busy.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    public sealed class WindowsHotkeyListener : IHotkeyListener
+    {
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
+        // VK codes F1..F7 mapped to the hotkey enum (same order).
+        private static readonly int[] Vks = { 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76 };
+
+        private Thread _thread;
+        private volatile bool _running;
+
+        public event Action<BotHotkey> Pressed;
+
+        public void Start()
+        {
+            if (_running) return;
+            _running = true;
+            _thread = new Thread(Loop) { IsBackground = true, Name = "FNFBot-hotkeys" };
+            _thread.Start();
+        }
+
+        public void Stop() => _running = false;
+
+        private void Loop()
+        {
+            var prev = new bool[Vks.Length];
+            while (_running)
+            {
+                for (int i = 0; i < Vks.Length; i++)
+                {
+                    bool down = (GetAsyncKeyState(Vks[i]) & 0x8000) != 0;
+                    if (down && !prev[i])
+                        Pressed?.Invoke((BotHotkey)i);
+                    prev[i] = down;
+                }
+                Thread.Sleep(20);
+            }
+        }
+
+        public void Dispose() => Stop();
+    }
+}

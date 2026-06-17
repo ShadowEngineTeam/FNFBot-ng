@@ -1,0 +1,44 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:FNFBot.App"
+        x:Class="FNFBot.App.MainWindow"
+        Width="920" Height="560"
+        Title="FNFBot"
+        Icon="/FNFBotIcon.ico"
+        Background="#130F40">
+
+  <Grid Margin="8" RowDefinitions="Auto,*,180,Auto">
+
+    <!-- Header -->
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,6">
+      <TextBlock Text="FNFBot" FontSize="22" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+      <TextBlock x:Name="TimeLabel" Grid.Column="1" Text="Time: 0" Foreground="White"
+                 Margin="0,0,16,0" VerticalAlignment="Center"/>
+      <TextBlock x:Name="OffsetLabel" Grid.Column="2" Text="Offset: 25" Foreground="White"
+                 VerticalAlignment="Center"/>
+    </Grid>
+
+    <!-- Note field + console -->
+    <Grid Grid.Row="1" ColumnDefinitions="160,*" Margin="0,0,0,6">
+      <Border Grid.Column="0" CornerRadius="4" ClipToBounds="True" Margin="0,0,8,0">
+        <local:NoteField x:Name="Field"/>
+      </Border>
+      <TextBox Grid.Column="1" x:Name="LogBox" IsReadOnly="True" AcceptsReturn="True"
+               TextWrapping="Wrap" FontFamily="Consolas,monospace"
+               Background="#13103F" Foreground="#E0E0E0" BorderThickness="0"/>
+    </Grid>
+
+    <!-- Song browser -->
+    <TreeView Grid.Row="2" x:Name="SongTree" Background="#130F40" Foreground="White" Margin="0,0,0,6"/>
+
+    <!-- Bottom controls -->
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto,Auto">
+      <TextBox Grid.Column="0" x:Name="DirBox" Watermark="FNF / engine / mod folder..." Margin="0,0,6,0"/>
+      <Button Grid.Column="1" x:Name="BrowseBtn" Content="Browse" Margin="0,0,6,0"/>
+      <Button Grid.Column="2" x:Name="CheckBtn" Content="Check Dir" Margin="0,0,6,0"/>
+      <CheckBox Grid.Column="3" x:Name="RenderCheck" Content="Render" IsChecked="True"
+                Foreground="White" VerticalAlignment="Center"/>
+    </Grid>
+
+  </Grid>
+</Window>

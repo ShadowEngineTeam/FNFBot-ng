@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# 
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FNFBot.Core", "FNFBot.Core\FNFBot.Core.csproj", "{4EDCB3B7-F5B5-4A45-BFC1-3FCE9CEEDB57}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FNFBot.App", "FNFBot.App\FNFBot.App.csproj", "{B4650417-EB1E-4407-84A6-F44CC32B776F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4EDCB3B7-F5B5-4A45-BFC1-3FCE9CEEDB57}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4EDCB3B7-F5B5-4A45-BFC1-3FCE9CEEDB57}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4EDCB3B7-F5B5-4A45-BFC1-3FCE9CEEDB57}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4EDCB3B7-F5B5-4A45-BFC1-3FCE9CEEDB57}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B4650417-EB1E-4407-84A6-F44CC32B776F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B4650417-EB1E-4407-84A6-F44CC32B776F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B4650417-EB1E-4407-84A6-F44CC32B776F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B4650417-EB1E-4407-84A6-F44CC32B776F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
