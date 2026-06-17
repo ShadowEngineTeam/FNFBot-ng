@@ -2,15 +2,17 @@
 
 A bot that automatically plays Friday Night Funkin' charts by injecting key presses in time with an internal stopwatch.
 
-> **Timing note** - FNFBot doesn't know when a song actually starts in-game. Press **F2** at the right moment to sync playback. Use the offset setting to fine-tune early/late hits.
-
 ## Engine support
 
 FNFBot reads chart `.json` files directly. It supports:
 
 - **Base game** (legacy and V-Slice)
-- **Psych Engine** / **Shadow Engine** (`legacy` and `psych_v1`)
+- **Psych Engine** (psych_legacy and psych_v1)
+- **Shadow Engine**
+- **Troll Engine**
+- ~~**Nightmare Vision**~~ (UNTESTED)
 - **Codename Engine**
+- **Kade Engine**
 
 ## Requirements
 

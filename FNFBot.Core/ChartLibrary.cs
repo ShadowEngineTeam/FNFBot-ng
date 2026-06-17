@@ -34,16 +34,22 @@ namespace FNFBot.Core
             foreach (string dataRoot in GetDataRoots(root))
                 ScanDataRoot(dataRoot, null, songs);
 
-            string modsDir = Path.Combine(root, "mods");
-            if (Directory.Exists(modsDir))
+            // Mod containers: Psych/base use "mods", Troll Engine uses "content". Each holds
+            // one folder per mod, with charts under the mod's "songs" (Codename/Troll) or
+            // "data" (Psych) subfolder.
+            foreach (string container in new[] { "mods", "content" })
             {
-                foreach (string mod in Directory.GetDirectories(modsDir))
+                string containerDir = Path.Combine(root, container);
+                if (!Directory.Exists(containerDir))
+                    continue;
+
+                foreach (string mod in Directory.GetDirectories(containerDir))
                 {
                     string modData = Path.Combine(mod, "data");
                     if (Directory.Exists(modData))
                         ScanDataRoot(modData, Path.GetFileName(mod), songs);
 
-                    string modSongs = Path.Combine(mod, "songs"); // Codename mods
+                    string modSongs = Path.Combine(mod, "songs"); // Codename / Troll mods
                     if (Directory.Exists(modSongs))
                         ScanDataRoot(modSongs, Path.GetFileName(mod), songs);
                 }

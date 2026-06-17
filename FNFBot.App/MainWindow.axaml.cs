@@ -2,10 +2,12 @@ using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FNFBot.Core;
 using FNFBot.Core.Input;
+using FNFBot.Core.Memory;
 
 namespace FNFBot.App
 {
@@ -24,12 +26,14 @@ namespace FNFBot.App
             _engine.Log += s => Dispatcher.UIThread.Post(() => AppendLog(s));
             _engine.Loaded += () => Dispatcher.UIThread.Post(UpdateLabels);
             _engine.SettingsChanged += () => Dispatcher.UIThread.Post(UpdateLabels);
+            _engine.MemoryStatusChanged += () => Dispatcher.UIThread.Post(UpdateAttachLabel);
 
             CheckBtn.Click += (_, _) => ScanFolder();
             BrowseBtn.Click += async (_, _) => await BrowseFolder();
             SongTree.DoubleTapped += (_, _) => PlaySelected();
             RenderCheck.IsCheckedChanged += (_, _) => Field.RenderEnabled = RenderCheck.IsChecked == true;
             SettingsBtn.Click += async (_, _) => await ShowSettingsDialog();
+            AttachBtn.Click += async (_, _) => await ShowAttachDialog();
 
             Closing += (_, _) => _engine.Dispose();
             // Global hotkey listener (WindowsHotkeyListener) already handles F1-F4 via
@@ -43,7 +47,7 @@ namespace FNFBot.App
             _labelTimer.Start();
 
             UpdateLabels();
-            AppendLog("Ready. Pick a folder, Check Dir, double-click a chart, then press F2 in-game.");
+            AppendLog("Ready. Pick a folder, Check Dir, double-click a chart. Then either press F2 in-game, or click \"Attach Game\" to auto-follow the song's countdown.");
 
             _engine.Start();
         }
@@ -51,6 +55,26 @@ namespace FNFBot.App
         private void UpdateLabels()
         {
             OffsetLabel.Text = "Offset: " + _engine.Settings.Offset;
+            UpdateAttachLabel();
+        }
+
+        private void UpdateAttachLabel()
+        {
+            if (!_engine.MemAttached)
+            {
+                AttachLabel.Text = "Not attached (manual F2)";
+                AttachLabel.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xB3, 0x7A));
+            }
+            else if (_engine.MemActive)
+            {
+                AttachLabel.Text = "Following: " + _engine.AttachedProcess;
+                AttachLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x7C, 0xF9, 0x6E));
+            }
+            else
+            {
+                AttachLabel.Text = "Attached: " + _engine.AttachedProcess + " (scanning...)";
+                AttachLabel.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xE0, 0x6A));
+            }
         }
 
         private void AppendLog(string text)
@@ -104,6 +128,81 @@ namespace FNFBot.App
                 AppendLog("Selecting " + chart.Label);
                 _engine.Load(chart.Path, chart.Difficulty);
             }
+        }
+
+        private async System.Threading.Tasks.Task ShowAttachDialog()
+        {
+            if (!ProcessMemory.IsSupported)
+            {
+                AppendLog("Attaching to a game is only supported on Windows; use manual F2 elsewhere.");
+                return;
+            }
+
+            var win = new Window
+            {
+                Title = "Attach Game",
+                Width = 460,
+                Height = 420,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Icon = Icon,
+                CanResize = false
+            };
+
+            var root = new Grid { Margin = new Thickness(12), RowDefinitions = new RowDefinitions("Auto,*,Auto") };
+
+            root.Children.Add(new TextBlock
+            {
+                Text = "Pick the running FNF window. The bot finds its Conductor and plays only when a song's countdown starts, following its time (pause / resume / restart).",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 8)
+            });
+
+            var list = new ListBox { Margin = new Thickness(0, 0, 0, 8) };
+            Grid.SetRow(list, 1);
+            root.Children.Add(list);
+
+            void Populate()
+            {
+                var items = BotEngine.ListProcesses();
+                list.ItemsSource = items;
+                AppendLog($"Found {items.Count} window(s) to attach to.");
+            }
+
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 6 };
+            Grid.SetRow(buttons, 2);
+            var refreshBtn = new Button { Content = "Refresh" };
+            var detachBtn = new Button { Content = "Detach" };
+            var attachBtn = new Button { Content = "Attach" };
+            var cancelBtn = new Button { Content = "Close" };
+            buttons.Children.Add(refreshBtn);
+            buttons.Children.Add(detachBtn);
+            buttons.Children.Add(attachBtn);
+            buttons.Children.Add(cancelBtn);
+            root.Children.Add(buttons);
+
+            win.Content = root;
+
+            void DoAttach()
+            {
+                if (list.SelectedItem is ProcessPick pick)
+                {
+                    _engine.AttachTo(pick.Pid, pick.Name);
+                    win.Close();
+                }
+                else
+                {
+                    AppendLog("Select a process first.");
+                }
+            }
+
+            refreshBtn.Click += (_, _) => Populate();
+            attachBtn.Click += (_, _) => DoAttach();
+            detachBtn.Click += (_, _) => { _engine.DetachMemory(); win.Close(); };
+            cancelBtn.Click += (_, _) => win.Close();
+            list.DoubleTapped += (_, _) => DoAttach();
+
+            Populate();
+            await win.ShowDialog(this);
         }
 
         private async System.Threading.Tasks.Task ShowSettingsDialog()

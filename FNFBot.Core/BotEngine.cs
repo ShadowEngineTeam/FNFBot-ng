@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using FNFBot.Core.Input;
+using FNFBot.Core.Memory;
 using FridayNightFunkin;
 
 namespace FNFBot.Core
@@ -33,6 +34,31 @@ namespace FNFBot.Core
         private string _chartPath;
         private string _difficulty;
 
+        // --- game-memory attach / Conductor following ---------------------------
+        // The bot can attach to a running FNF process, find Conductor.songPosition,
+        // and play in lockstep with it: it starts only on the song's negative
+        // countdown, follows pauses/resumes, and re-syncs after seeks. See
+        // the song-clock classes (ModuleStaticSongClock / VSliceSongClock) for the
+        // locking strategy.
+        private const double CountdownDeepMs = -800;  // a real "3-2-1" dips below this
+        private const double CountdownNearMs = -350;  // ...then climbs back up to here
+        // A backward jump landing within this of the start means the song ended / the
+        // player exited to a menu or freeplay (songPosition snapped back). It disarms us:
+        // engines like Codename drive the SAME global songPosition forward for freeplay
+        // autoplay previews, so without this an armed bot would mash in the menu.
+        private const double ReentryGuardMs = 5000;
+
+        private ISongClock _mem;
+        private Thread _memWatch;
+        private volatile bool _shutdown;
+        private volatile int _attachPid;       // 0 = detached
+        private volatile string _attachName;
+
+        private bool _memArmed;        // countdown confirmed -> bot may press
+        private bool _cdSawDeep;       // saw the deep negative dip of a real countdown
+        private bool _memWasRunning;   // running last memory frame (for resync on (re)start)
+        private double _memLastT;      // last memory time (for seek/jump detection)
+
         public string SongName { get; private set; } = "";
         public string Format { get; private set; } = "";
         public string Difficulty { get; private set; } = "";
@@ -41,13 +67,30 @@ namespace FNFBot.Core
         public double SectionLenMs { get; private set; } = 1;
 
         public IReadOnlyList<FNFSong.FNFNote> Notes => _notes;
-        public double CurrentTimeMs => _watch.Elapsed.TotalMilliseconds;
+
+        /// <summary>
+        /// Current song time in ms. Sourced from the attached game's Conductor when
+        /// locked on, otherwise from the manual (F2) stopwatch.
+        /// </summary>
+        public double CurrentTimeMs => MemActive ? _mem.InterpolatedMs : _watch.Elapsed.TotalMilliseconds;
         public bool IsPlaying => _playing;
+
+        /// <summary>True when attached to a process AND locked onto its songPosition.</summary>
+        public bool MemActive => _attachPid != 0 && _mem != null && _mem.Located;
+
+        /// <summary>True when a process is selected, regardless of lock state.</summary>
+        public bool MemAttached => _attachPid != 0;
+
+        /// <summary>Display name of the attached process, or null.</summary>
+        public string AttachedProcess => _attachPid != 0 ? _attachName : null;
 
         public event Action<string> Log;
         public event Action Loaded;
         public event Action Completed;
         public event Action SettingsChanged;
+
+        /// <summary>Raised when attach/lock state changes, so the UI can refresh its label.</summary>
+        public event Action MemoryStatusChanged;
 
         public BotEngine() : this(null, null) { }
 
@@ -61,6 +104,7 @@ namespace FNFBot.Core
             _input = input ?? PlatformInput.CreateBackend();
             _hotkeys = hotkeys ?? PlatformInput.CreateHotkeyListener();
             _hotkeys.Pressed += HandleHotkey;
+            _mem = new ModuleStaticSongClock(Emit);
         }
 
         /// <summary>
@@ -72,6 +116,9 @@ namespace FNFBot.Core
             _hotkeys.Start();
             if (PlatformInput.LastBackendError != null)
                 Emit("Input unavailable: " + PlatformInput.LastBackendError);
+
+            _memWatch = new Thread(MemoryWatch) { IsBackground = true, Name = "FNFBot-mem" };
+            _memWatch.Start();
         }
 
         private void Emit(string msg) => Log?.Invoke(msg);
@@ -127,6 +174,12 @@ namespace FNFBot.Core
             _playing = false;
             _ended = false;
 
+            // Fresh chart: re-arm from scratch so the next in-game countdown triggers it.
+            _memArmed = false;
+            _cdSawDeep = false;
+            _memWasRunning = false;
+            _memLastT = 0;
+
             _stop = false;
             _thread = new Thread(PlayLoop) { IsBackground = true, Name = "FNFBot-play" };
             _thread.Start();
@@ -141,56 +194,17 @@ namespace FNFBot.Core
             int hitIndex = 0;
             bool completedLogged = false;
 
-            void Reset()
-            {
-                hitIndex = 0;
-                completedLogged = false;
-                ReleaseAllHolds();
-            }
-
-            Reset();
+            ReleaseAllHolds();
             Emit("Play thread ready.");
 
             try
             {
                 while (!_stop)
                 {
-                    if (!_playing)
-                    {
-                        if (_watch.IsRunning)
-                            _watch.Reset();
-                        ReleaseAllHolds();
-                        Thread.Sleep(40);
-                        continue;
-                    }
-
-                    if (!_watch.IsRunning)
-                    {
-                        Reset();
-                        _watch.Start();
-                    }
-
-                    double t = _watch.Elapsed.TotalMilliseconds;
-
-                    while (hitIndex < _notes.Count && t + Settings.Offset >= _notes[hitIndex].Time + _noteJitter[hitIndex] - 22)
-                    {
-                        HandleNote(_notes[hitIndex], t, _noteJitter[hitIndex]);
-                        hitIndex++;
-                    }
-
-                    ReleaseExpiredHolds(t);
-
-                    if (hitIndex >= _notes.Count && !completedLogged && !AnyHoldActive())
-                    {
-                        completedLogged = true;
-                        ReleaseAllHolds();
-                        _playing = false;
-                        _ended = true;
-                        Emit("Completed!");
-                        Completed?.Invoke();
-                    }
-
-                    Thread.Sleep(1);
+                    if (MemActive)
+                        MemoryStep(ref hitIndex);
+                    else
+                        ManualStep(ref hitIndex, ref completedLogged);
                 }
             }
             catch (Exception e)
@@ -200,6 +214,333 @@ namespace FNFBot.Core
             finally
             {
                 ReleaseAllHolds();
+            }
+        }
+
+        /// <summary>The original manual path: F2 starts a stopwatch and we press to it.</summary>
+        private void ManualStep(ref int hitIndex, ref bool completedLogged)
+        {
+            if (!_playing)
+            {
+                if (_watch.IsRunning)
+                    _watch.Reset();
+                ReleaseAllHolds();
+                Thread.Sleep(40);
+                return;
+            }
+
+            if (!_watch.IsRunning)
+            {
+                hitIndex = 0;
+                completedLogged = false;
+                ReleaseAllHolds();
+                _watch.Start();
+            }
+
+            double t = _watch.Elapsed.TotalMilliseconds;
+            FireDueNotes(t, ref hitIndex);
+            ReleaseExpiredHolds(t);
+
+            if (hitIndex >= _notes.Count && !completedLogged && !AnyHoldActive())
+            {
+                completedLogged = true;
+                ReleaseAllHolds();
+                _playing = false;
+                _ended = true;
+                Emit("Completed!");
+                Completed?.Invoke();
+            }
+
+            Thread.Sleep(1);
+        }
+
+        /// <summary>
+        /// The attached path: the clock comes from the game's <c>Conductor.songPosition</c>.
+        /// The bot arms only on the negative countdown, follows pauses (frozen clock) and
+        /// resumes, and re-syncs silently on seeks instead of machine-gunning skipped notes.
+        /// </summary>
+        private void MemoryStep(ref int hitIndex)
+        {
+            if (_watch.IsRunning)
+                _watch.Reset(); // memory owns the clock now
+
+            double pos = _mem.InterpolatedMs;
+            bool advancing = _mem.Advancing;
+
+            // Left gameplay or restarted: while armed, songPosition snapped back toward
+            // the start. Disarm before anything else — only a fresh negative countdown
+            // re-arms, so a menu / freeplay autoplay preview that drives the same global
+            // songPosition forward (Codename, Psych music player) can't make us press.
+            if (_memArmed && pos - _memLastT < -250 && pos < ReentryGuardMs)
+            {
+                Disarm("song ended or exited gameplay");
+                _memLastT = pos;
+                Thread.Sleep(4);
+                return;
+            }
+
+            UpdateArm(pos, ref hitIndex);
+
+            bool running = _memArmed && advancing;
+            if (!running)
+            {
+                if (_memWasRunning)
+                    ReleaseAllHolds(); // paused or stalled: let go of every key
+                _playing = false;
+                _memWasRunning = false;
+                _memLastT = pos;
+                Thread.Sleep(4);
+                return;
+            }
+
+            if (!_memWasRunning)
+            {
+                // (Re)entering play — armed countdown, or resume mid-song. Jump silently
+                // to the live position and re-grab any sustain we're already inside.
+                SeekTo(pos, ref hitIndex);
+                _memWasRunning = true;
+                _playing = true;
+                _memLastT = pos;
+            }
+
+            double t = pos;
+            double dt = t - _memLastT;
+
+            if (dt > 250 || dt < -250)
+                SeekTo(t, ref hitIndex); // jump within the song (skip/seek): resync, don't burst
+            else
+                FireDueNotes(t, ref hitIndex);
+
+            ReleaseExpiredHolds(t);
+
+            if (hitIndex >= _notes.Count && !AnyHoldActive())
+            {
+                // Chart body done; disarm so the outro (same global songPosition, still
+                // climbing) can't press and the next song's countdown re-arms cleanly.
+                Disarm("chart complete");
+                Completed?.Invoke();
+            }
+
+            _memLastT = t;
+            Thread.Sleep(1);
+        }
+
+        private void Disarm(string why)
+        {
+            bool was = _memArmed;
+            _memArmed = false;
+            _cdSawDeep = false;
+            _memWasRunning = false;
+            _playing = false;
+            ReleaseAllHolds();
+            if (was)
+                Emit($"Disarmed: {why} — waiting for the next countdown.");
+        }
+
+        /// <summary>
+        /// Confirmed-countdown arming: arm only after songPosition dips below
+        /// <see cref="CountdownDeepMs"/> and then climbs, staying negative, into
+        /// <see cref="CountdownNearMs"/> — the shape of a real "3-2-1" ramp. Any positive
+        /// reading resets the tracker, so a menu dip-then-jump can't fake it.
+        /// </summary>
+        private void UpdateArm(double pos, ref int hitIndex)
+        {
+            if (_memArmed)
+                return;
+
+            if (pos >= 0)
+            {
+                _cdSawDeep = false;
+                return;
+            }
+            if (pos <= CountdownDeepMs)
+                _cdSawDeep = true;
+
+            if (_cdSawDeep && pos >= CountdownNearMs)
+            {
+                _memArmed = true;
+                _memWasRunning = false; // force a clean seek on the first play frame
+                hitIndex = 0;
+                ReleaseAllHolds();
+                Emit($"Countdown confirmed ({pos:0}ms) — auto-playing.");
+            }
+        }
+
+        private void FireDueNotes(double t, ref int hitIndex)
+        {
+            while (hitIndex < _notes.Count && t + Settings.Offset >= _notes[hitIndex].Time + _noteJitter[hitIndex] - 22)
+            {
+                HandleNote(_notes[hitIndex], t, _noteJitter[hitIndex]);
+                hitIndex++;
+            }
+        }
+
+        /// <summary>
+        /// Move the play cursor to <paramref name="t"/> without pressing the notes we
+        /// skip over, then re-establish any sustains whose body covers <paramref name="t"/>.
+        /// Used on seeks, resumes, and the armed countdown.
+        /// </summary>
+        private void SeekTo(double t, ref int hitIndex)
+        {
+            ReleaseAllHolds();
+            int i = 0;
+            while (i < _notes.Count && _notes[i].Time + _noteJitter[i] <= t + Settings.Offset)
+                i++;
+            hitIndex = i;
+            ResyncHolds(t);
+        }
+
+        private void ResyncHolds(double t)
+        {
+            for (int idx = 0; idx < _notes.Count; idx++)
+            {
+                var n = _notes[idx];
+                if (n.Time > t)
+                    break; // sorted: nothing further can already cover t
+                if (n.Length <= 0 || n.Time + n.Length <= t)
+                    continue;
+                int dir = (int)n.Type % 4;
+                if (_holdTimes[dir] != 0)
+                    _input.KeyUp(dir);
+                _input.KeyDown(dir);
+                _holdTimes[dir] = n.Time + n.Length + Settings.HoldMinMs;
+            }
+        }
+
+        // ----- memory attach -----------------------------------------------------
+
+        /// <summary>Windowed processes the user can attach to.</summary>
+        public static List<ProcessPick> ListProcesses() => ProcessMemory.ListProcesses();
+
+        /// <summary>Attach to a process; the watcher thread opens it and starts scanning.</summary>
+        public void AttachTo(int pid, string name)
+        {
+            if (pid <= 0)
+                return;
+            _attachName = name;
+            _memArmed = false;
+            _cdSawDeep = false;
+            _memWasRunning = false;
+            _attachPid = pid;
+            Emit($"Attaching to {name} (pid {pid})... start a song in-game and the bot follows its countdown.");
+            MemoryStatusChanged?.Invoke();
+        }
+
+        public void DetachMemory()
+        {
+            if (_attachPid == 0)
+                return;
+            _attachPid = 0;
+            _memArmed = false;
+            _cdSawDeep = false;
+            _memWasRunning = false;
+            ReleaseAllHolds();
+            Emit("Detached — back to manual (F2).");
+            MemoryStatusChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Picks the songPosition reader for the attached engine by process name. Funkin
+        /// V-Slice keeps its Conductor on the heap (pointer-chain clock); every other engine
+        /// here (Codename, Kade, NightmareVision, Troll, Psych/Shadow) keeps songPosition as
+        /// a module static and shares <see cref="ModuleStaticSongClock"/> — the subclasses
+        /// only change the log label. An unrecognised name falls back to the generic
+        /// module-static clock, which works for any Psych-style engine no matter how its exe
+        /// is named, so naming precision here is purely cosmetic.
+        /// </summary>
+        private ISongClock SelectClock(string name)
+        {
+            if (CodenameSongClock.Matches(name))
+            {
+                Emit("Detected Codename Engine.");
+                return new CodenameSongClock(Emit);
+            }
+            if (KadeSongClock.Matches(name))
+            {
+                Emit("Detected Kade Engine.");
+                return new KadeSongClock(Emit);
+            }
+            if (NightmareVisionSongClock.Matches(name))
+            {
+                Emit("Detected NightmareVision.");
+                return new NightmareVisionSongClock(Emit);
+            }
+            if (TrollSongClock.Matches(name))
+            {
+                Emit("Detected Troll Engine.");
+                return new TrollSongClock(Emit);
+            }
+            if (VSliceSongClock.Matches(name))
+            {
+                Emit("Detected Funkin (V-Slice) — using the heap pointer-chain clock.");
+                return new VSliceSongClock(Emit);
+            }
+            if (PsychSongClock.Matches(name))
+            {
+                Emit("Detected Psych/Shadow Engine.");
+                return new PsychSongClock(Emit);
+            }
+            Emit("Unrecognised engine name — using the generic module-static clock.");
+            return new ModuleStaticSongClock(Emit);
+        }
+
+        private void MemoryWatch()
+        {
+            while (!_shutdown)
+            {
+                try
+                {
+                    int pid = _attachPid;
+
+                    if (pid == 0)
+                    {
+                        if (_mem.HasProcess)
+                        {
+                            _mem.Detach();
+                            MemoryStatusChanged?.Invoke();
+                        }
+                        Thread.Sleep(150);
+                        continue;
+                    }
+
+                    if (!_mem.HasProcess)
+                    {
+                        var proc = ProcessMemory.OpenByPid(pid, Emit);
+                        if (proc == null)
+                        {
+                            _attachPid = 0;
+                            MemoryStatusChanged?.Invoke();
+                            Thread.Sleep(200);
+                            continue;
+                        }
+                        _attachName = proc.Name;
+                        _mem = SelectClock(proc.Name);
+                        _mem.Attach(proc);
+                        Emit($"Attached to {proc.Name} (pid {pid}). Scanning for Conductor.songPosition...");
+                        MemoryStatusChanged?.Invoke();
+                    }
+
+                    if (!_mem.IsProcessAlive)
+                    {
+                        Emit($"{_attachName} exited — detached.");
+                        _mem.Detach();
+                        _attachPid = 0;
+                        MemoryStatusChanged?.Invoke();
+                        continue;
+                    }
+
+                    bool wasLocated = _mem.Located;
+                    _mem.Tick();
+                    if (_mem.Located != wasLocated)
+                        MemoryStatusChanged?.Invoke();
+
+                    Thread.Sleep(_mem.Located ? 3 : 120);
+                }
+                catch (Exception e)
+                {
+                    Emit("Memory watch error: " + e.Message);
+                    Thread.Sleep(300);
+                }
             }
         }
 
@@ -338,9 +679,12 @@ namespace FNFBot.Core
         public void Dispose()
         {
             _stop = true;
+            _shutdown = true;
             _hotkeys.Pressed -= HandleHotkey;
             _hotkeys.Stop();
             _thread?.Join(200);
+            _memWatch?.Join(300);
+            _mem?.Detach();
             ReleaseAllHolds();
         }
     }
