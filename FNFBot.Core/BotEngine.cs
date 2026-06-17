@@ -185,7 +185,7 @@ namespace FNFBot.Core
             _thread.Start();
 
             string diffInfo = string.IsNullOrEmpty(Difficulty) ? "" : $" [{Difficulty}]";
-            Emit($"Loaded {SongName}{diffInfo} ({Format}) — {_notes.Count} notes to hit. Press F2 to start.");
+            Emit($"Loaded {SongName}{diffInfo} ({Format}), {_notes.Count} notes to hit. Press F2 to start.");
             Loaded?.Invoke();
         }
 
@@ -268,7 +268,7 @@ namespace FNFBot.Core
             bool advancing = _mem.Advancing;
 
             // Left gameplay or restarted: while armed, songPosition snapped back toward
-            // the start. Disarm before anything else — only a fresh negative countdown
+            // the start. Disarm before anything else; only a fresh negative countdown
             // re-arms, so a menu / freeplay autoplay preview that drives the same global
             // songPosition forward (Codename, Psych music player) can't make us press.
             if (_memArmed && pos - _memLastT < -250 && pos < ReentryGuardMs)
@@ -295,7 +295,7 @@ namespace FNFBot.Core
 
             if (!_memWasRunning)
             {
-                // (Re)entering play — armed countdown, or resume mid-song. Jump silently
+                // (Re)entering play: armed countdown, or resume mid-song. Jump silently
                 // to the live position and re-grab any sustain we're already inside.
                 SeekTo(pos, ref hitIndex);
                 _memWasRunning = true;
@@ -334,13 +334,13 @@ namespace FNFBot.Core
             _playing = false;
             ReleaseAllHolds();
             if (was)
-                Emit($"Disarmed: {why} — waiting for the next countdown.");
+                Emit($"Disarmed: {why}, waiting for the next countdown.");
         }
 
         /// <summary>
         /// Confirmed-countdown arming: arm only after songPosition dips below
         /// <see cref="CountdownDeepMs"/> and then climbs, staying negative, into
-        /// <see cref="CountdownNearMs"/> — the shape of a real "3-2-1" ramp. Any positive
+        /// <see cref="CountdownNearMs"/>, the shape of a real "3-2-1" ramp. Any positive
         /// reading resets the tracker, so a menu dip-then-jump can't fake it.
         /// </summary>
         private void UpdateArm(double pos, ref int hitIndex)
@@ -362,7 +362,7 @@ namespace FNFBot.Core
                 _memWasRunning = false; // force a clean seek on the first play frame
                 hitIndex = 0;
                 ReleaseAllHolds();
-                Emit($"Countdown confirmed ({pos:0}ms) — auto-playing.");
+                Emit($"Countdown confirmed ({pos:0}ms), auto-playing.");
             }
         }
 
@@ -435,7 +435,7 @@ namespace FNFBot.Core
             _cdSawDeep = false;
             _memWasRunning = false;
             ReleaseAllHolds();
-            Emit("Detached — back to manual (F2).");
+            Emit("Detached, back to manual (F2).");
             MemoryStatusChanged?.Invoke();
         }
 
@@ -443,7 +443,7 @@ namespace FNFBot.Core
         /// Picks the songPosition reader for the attached engine by process name. Funkin
         /// V-Slice keeps its Conductor on the heap (pointer-chain clock); every other engine
         /// here (Codename, Kade, NightmareVision, Troll, Psych/Shadow) keeps songPosition as
-        /// a module static and shares <see cref="ModuleStaticSongClock"/> — the subclasses
+        /// a module static and shares <see cref="ModuleStaticSongClock"/>; the subclasses
         /// only change the log label. An unrecognised name falls back to the generic
         /// module-static clock, which works for any Psych-style engine no matter how its exe
         /// is named, so naming precision here is purely cosmetic.
@@ -472,7 +472,7 @@ namespace FNFBot.Core
             }
             if (VSliceSongClock.Matches(name))
             {
-                Emit("Detected Funkin (V-Slice) — using the heap pointer-chain clock.");
+                Emit("Detected Funkin (V-Slice), using the heap pointer-chain clock.");
                 return new VSliceSongClock(Emit);
             }
             if (PsychSongClock.Matches(name))
@@ -480,7 +480,7 @@ namespace FNFBot.Core
                 Emit("Detected Psych/Shadow Engine.");
                 return new PsychSongClock(Emit);
             }
-            Emit("Unrecognised engine name — using the generic module-static clock.");
+            Emit("Unrecognised engine name, using the generic module-static clock.");
             return new ModuleStaticSongClock(Emit);
         }
 
@@ -522,7 +522,7 @@ namespace FNFBot.Core
 
                     if (!_mem.IsProcessAlive)
                     {
-                        Emit($"{_attachName} exited — detached.");
+                        Emit($"{_attachName} exited, detached.");
                         _mem.Detach();
                         _attachPid = 0;
                         MemoryStatusChanged?.Invoke();
@@ -628,7 +628,7 @@ namespace FNFBot.Core
 
         public void FastForward()
         {
-            Emit("Fast-forward — skipping to end.");
+            Emit("Fast-forward, skipping to end.");
             _playing = false;
             _ended = true;
             Completed?.Invoke();

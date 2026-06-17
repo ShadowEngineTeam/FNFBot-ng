@@ -6,7 +6,7 @@ namespace FNFBot.Core.Memory
     /// NightmareVision songPosition reader. Module <c>static var songPosition:Float</c>;
     /// its countdown is <c>songPosition = 0; songPosition -= Conductor.crotchet * 5</c>
     /// (note the "crotchet" spelling) and climbs continuously via
-    /// <c>songPosition += FlxG.elapsed * 1000 * playbackRate</c> — a deep negative ramp the
+    /// <c>songPosition += FlxG.elapsed * 1000 * playbackRate</c>, a deep negative ramp the
     /// shared arming catches. Inherits all of <see cref="ModuleStaticSongClock"/>.
     /// </summary>
     public sealed class NightmareVisionSongClock : ModuleStaticSongClock

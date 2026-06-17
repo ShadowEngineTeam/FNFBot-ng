@@ -13,7 +13,7 @@ namespace FNFBot.Core.Memory
     /// 0.0, and the plausible time range matches millions of doubles), so we match it
     /// by <i>behaviour</i>: take two snapshots of every in-range double in the module's
     /// writable pages a fixed interval apart and keep only the ones advancing at roughly
-    /// 1&#160;ms per real ms — the signature of a song clock. A handful of confirmations
+    /// 1&#160;ms per real ms, the signature of a song clock. A handful of confirmations
     /// pins the address.</para>
     ///
     /// <para><b>Why a wrong lock is harmless.</b> The bot only starts pressing on the
@@ -154,7 +154,7 @@ namespace FNFBot.Core.Memory
             {
                 if (++_readFails >= MaxReadFails)
                 {
-                    _log?.Invoke($"Lost {EngineName} songPosition (read failures) — re-scanning.");
+                    _log?.Invoke($"Lost {EngineName} songPosition (read failures), re-scanning.");
                     _located = false;
                     _addr = 0;
                     ResetScan();

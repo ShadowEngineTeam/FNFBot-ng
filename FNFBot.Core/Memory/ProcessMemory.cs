@@ -63,7 +63,7 @@ namespace FNFBot.Core.Memory
                 }
                 catch
                 {
-                    // Access denied / exited mid-enumeration — skip.
+                    // Access denied / exited mid-enumeration; skip.
                 }
                 finally
                 {
@@ -203,7 +203,7 @@ namespace FNFBot.Core.Memory
         /// Enumerates committed, writable, non-guard memory regions. When the main
         /// module range is known and <paramref name="moduleOnly"/> is true, the sweep
         /// is restricted to the .exe image (where HXCPP statics such as
-        /// <c>Conductor.songPosition</c> live) — a few MB instead of gigabytes.
+        /// <c>Conductor.songPosition</c> live): a few MB instead of gigabytes.
         /// </summary>
         public IEnumerable<(ulong addr, ulong size)> WritableRegions(bool moduleOnly)
         {

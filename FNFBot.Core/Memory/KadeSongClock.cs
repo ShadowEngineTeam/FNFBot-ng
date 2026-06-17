@@ -6,7 +6,7 @@ namespace FNFBot.Core.Memory
     /// Kade Engine songPosition reader. Kade is one of the oldest engines, built straight
     /// on the original FNF HaxeFlixel base, so <c>Conductor.songPosition</c> is a plain
     /// module <c>static var ... :Float</c>. Its countdown sets it to a fixed <c>-5000</c>
-    /// (PlayState) and climbs continuously via <c>songPosition += FlxG.elapsed * 1000</c> —
+    /// (PlayState) and climbs continuously via <c>songPosition += FlxG.elapsed * 1000</c>,
     /// a deep negative ramp the shared confirmed-countdown arming catches. No engine-specific
     /// behaviour beyond the label, so it inherits all of <see cref="ModuleStaticSongClock"/>.
     /// </summary>

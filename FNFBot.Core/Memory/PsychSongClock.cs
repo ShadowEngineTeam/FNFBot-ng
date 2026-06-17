@@ -7,7 +7,7 @@ namespace FNFBot.Core.Memory
     ///
     /// <para>Psych keeps <c>Conductor.songPosition</c> as a plain <c>static var ... :Float</c>
     /// in the main module, and <c>PlayState.startCountdown</c> sets it to
-    /// <c>-Conductor.crochet * 5</c> before climbing toward 0 — exactly the deep negative
+    /// <c>-Conductor.crochet * 5</c> before climbing toward 0, exactly the deep negative
     /// countdown the shared scan and arming expect. Nothing engine-specific beyond the
     /// label and the process-name match, so it inherits all of
     /// <see cref="ModuleStaticSongClock"/>.</para>

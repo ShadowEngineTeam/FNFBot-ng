@@ -14,14 +14,14 @@ namespace FNFBot.Core.Memory
     /// <list type="number">
     ///   <item><description>scans the small <i>module</i> static data once for pointers that
     ///   land in the GC heap and point at a real object (its first word is a vtable in
-    ///   readable memory) — <c>Conductor._instance</c> is one of these;</description></item>
+    ///   readable memory); <c>Conductor._instance</c> is one of these;</description></item>
     ///   <item><description>each cycle reads <i>through</i> each such static pointer twice, a
     ///   tightly controlled ~140&#160;ms apart, and keeps the field that advances at ~1&#160;ms/ms.
     ///   That is the Conductor's <c>songPosition</c>.</description></item>
     /// </list>
     /// Reading through the static both passes makes it correct even if the GC relocates the
     /// object (the engine updates the static), and bounds the work to a few MB regardless of
-    /// game size — fixing the slow/oversized full-memory scan that failed before.</para>
+    /// game size, fixing the slow/oversized full-memory scan that failed before.</para>
     ///
     /// <para>Arming/pausing/disarming are handled by <c>BotEngine</c>, identical to the other
     /// engines: V-Slice's countdown dips to <c>-crochet*5</c> and playback clamps songPosition
@@ -160,7 +160,7 @@ namespace FNFBot.Core.Memory
             {
                 if (++_readFails >= MaxReadFails)
                 {
-                    _log?.Invoke("Lost V-Slice songPosition — re-scanning.");
+                    _log?.Invoke("Lost V-Slice songPosition, re-scanning.");
                     _located = false;
                     _builtAnchors = false;
                     _anchorStatics = null;

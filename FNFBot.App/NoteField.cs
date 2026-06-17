@@ -9,7 +9,7 @@ namespace FNFBot.App
 {
     /// <summary>
     /// Upscroll note visualizer, drawn directly with Avalonia's DrawingContext and refreshed
-    /// on its own 60 fps timer — fully decoupled from the bot's timing thread.
+    /// on its own 60 fps timer, fully decoupled from the bot's timing thread.
     /// </summary>
     public class NoteField : Control
     {

@@ -19,7 +19,7 @@ namespace FNFBot.Core.Memory
     ///   <c>crochet = 15000*stepsPerBeat/bpm</c>; still a deep negative dip, caught by the
     ///   shared confirmed-countdown arming.</description></item>
     ///   <item><description>Codename drives the SAME global songPosition forward for freeplay
-    ///   autoplay previews — handled by the bot's disarm-on-reentry, not here.</description></item>
+    ///   autoplay previews, handled by the bot's disarm-on-reentry, not here.</description></item>
     /// </list>
     /// </summary>
     public sealed class CodenameSongClock : ModuleStaticSongClock

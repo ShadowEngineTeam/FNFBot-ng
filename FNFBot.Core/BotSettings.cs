@@ -12,7 +12,7 @@ namespace FNFBot.Core
         private const string SettingsFile = "bot.settings";
 
         public int Offset = 0;         // ms to press before/after the note time
-        public int FailCount = 0;       // reserved — not yet enforced
+        public int FailCount = 0;       // reserved, not yet enforced
         public int PressMinMs = 56;     // press low bound
         public int PressMaxMs = 110;    // press high bound
         public int HoldMinMs = 44;      // hold release low bound

@@ -19,7 +19,7 @@ namespace FNFBot.Core.Memory
         public string Display =>
             string.IsNullOrEmpty(Title)
                 ? $"{Name}  (pid {Pid})"
-                : $"{Name}  (pid {Pid})  —  {Title}";
+                : $"{Name}  (pid {Pid}), {Title}";
 
         public override string ToString() => Display;
     }
