@@ -23,8 +23,6 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      # Single-file / self-contained / compressed settings live in the .csproj, so a plain
-      # RID-targeted publish already yields one binary.
       - name: Publish
         run: dotnet publish FNFBot.App/FNFBot.App.csproj -c Release -r ${{ matrix.rid }} -o publish/${{ matrix.rid }}
 
