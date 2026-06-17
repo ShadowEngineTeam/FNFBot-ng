@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using FridayNightFunkin;
 
 namespace FNFBot.Core
@@ -91,7 +92,7 @@ namespace FNFBot.Core
                     ? Directory.GetFiles(chartsDir, "*.json").Where(IsChartJson).ToArray()
                     : Directory.GetFiles(songDir, "*.json")
                         .Where(f => !Path.GetFileName(f).StartsWith("events", StringComparison.OrdinalIgnoreCase))
-                        .Where(f => !Path.GetFileName(f).EndsWith("-metadata.json", StringComparison.OrdinalIgnoreCase))
+                        .Where(f => Path.GetFileName(f).IndexOf("-metadata", StringComparison.OrdinalIgnoreCase) < 0)
                         .Where(IsChartJson)
                         .ToArray();
 
@@ -128,11 +129,42 @@ namespace FNFBot.Core
             {
                 using var doc = ChartUtils.LoadJson(path);
                 var root = doc.RootElement;
-                return PsychParser.IsPsychRoot(root)
-                    || VSliceParser.IsVSliceRoot(root)
-                    || CodenameParser.IsCodenameRoot(root);
+                return (PsychParser.IsPsychRoot(root) && HasPsychNotes(root))
+                    || (VSliceParser.IsVSliceRoot(root) && HasVSliceNotes(root))
+                    || (CodenameParser.IsCodenameRoot(root) && HasCodenameNotes(root));
             }
             catch { return false; }
+        }
+
+        /// <summary>True if the Psych song object has at least one section with notes.</summary>
+        private static bool HasPsychNotes(JsonElement root)
+        {
+            var song = root.GetProperty("song");
+            if (song.ValueKind == JsonValueKind.String)
+                return root.TryGetProperty("notes", out var secs) && secs.ValueKind == JsonValueKind.Array && secs.GetArrayLength() > 0;
+            return song.TryGetProperty("notes", out var sections) && sections.ValueKind == JsonValueKind.Array && sections.GetArrayLength() > 0;
+        }
+
+        /// <summary>True if the V-Slice chart has at least one difficulty with notes.</summary>
+        private static bool HasVSliceNotes(JsonElement root)
+        {
+            if (!root.TryGetProperty("notes", out var notes) || notes.ValueKind != JsonValueKind.Object)
+                return false;
+            foreach (var kv in notes.EnumerateObject())
+                if (kv.Value.ValueKind == JsonValueKind.Array && kv.Value.GetArrayLength() > 0)
+                    return true;
+            return false;
+        }
+
+        /// <summary>True if the Codename chart has at least one strum line with notes.</summary>
+        private static bool HasCodenameNotes(JsonElement root)
+        {
+            if (!root.TryGetProperty("strumLines", out var sl) || sl.ValueKind != JsonValueKind.Array)
+                return false;
+            foreach (var line in sl.EnumerateArray())
+                if (line.TryGetProperty("notes", out var notes) && notes.ValueKind == JsonValueKind.Array && notes.GetArrayLength() > 0)
+                    return true;
+            return false;
         }
     }
 }
