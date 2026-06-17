@@ -17,9 +17,11 @@ namespace FNFBot.Core
     {
         private readonly IInputBackend _input;
         private readonly IHotkeyListener _hotkeys;
+        private readonly Random _rnd = new Random();
         public BotSettings Settings { get; }
 
         private List<FNFSong.FNFNote> _notes = new List<FNFSong.FNFNote>();
+        private double[] _noteJitter = Array.Empty<double>();
         private readonly double[] _holdTimes = new double[4];
         private readonly Stopwatch _watch = new Stopwatch();
 
@@ -114,6 +116,10 @@ namespace FNFBot.Core
             notes.Sort((a, b) => a.Time.CompareTo(b.Time));
             _notes = notes;
 
+            _noteJitter = new double[_notes.Count];
+            for (int i = 0; i < _notes.Count; i++)
+                _noteJitter[i] = _notes[i].Length > 0 ? 0 : ComputeJitter();
+
             double crochet = Bpm > 0 ? 60000.0 / Bpm : 600.0;
             SectionLenMs = crochet * 4.0;
 
@@ -126,8 +132,7 @@ namespace FNFBot.Core
             _thread.Start();
 
             string diffInfo = string.IsNullOrEmpty(Difficulty) ? "" : $" [{Difficulty}]";
-            Emit($"Loaded {SongName}{diffInfo} ({Format}) — {_notes.Count} notes to hit. Press F1 to start.");
-            Emit($"Timing — offset {Settings.Offset}ms (F2/F3), press {Settings.PressMs}ms (F4/F5), overhold {Settings.HoldReleaseMs}ms (F6/F7).");
+            Emit($"Loaded {SongName}{diffInfo} ({Format}) — {_notes.Count} notes to hit. Press F2 to start.");
             Loaded?.Invoke();
         }
 
@@ -167,9 +172,9 @@ namespace FNFBot.Core
 
                     double t = _watch.Elapsed.TotalMilliseconds;
 
-                    while (hitIndex < _notes.Count && t + Settings.Offset >= _notes[hitIndex].Time - 22)
+                    while (hitIndex < _notes.Count && t + Settings.Offset >= _notes[hitIndex].Time + _noteJitter[hitIndex] - 22)
                     {
-                        HandleNote(_notes[hitIndex], t);
+                        HandleNote(_notes[hitIndex], t, _noteJitter[hitIndex]);
                         hitIndex++;
                     }
 
@@ -198,10 +203,25 @@ namespace FNFBot.Core
             }
         }
 
-        private void HandleNote(FNFSong.FNFNote n, double now)
+        private double ComputeJitter()
+        {
+            if (Settings.PressRate >= 100)
+                return 0;
+
+            double maxJitter = (100 - Settings.PressRate) * 1.6;
+            double j = _rnd.NextDouble() * maxJitter;
+            if (_rnd.NextDouble() < 0.3)
+                j = -Math.Min(j, 60);
+            return j;
+        }
+
+        private void HandleNote(FNFSong.FNFNote n, double now, double jitter)
         {
             int dir = (int)n.Type % 4;
             bool shouldHold = n.Length > 0;
+
+            if (Settings.AutoFail && !shouldHold && _rnd.Next(100) < 10)
+                return;
 
             if (_holdTimes[dir] != 0)
             {
@@ -210,9 +230,12 @@ namespace FNFBot.Core
             }
 
             _input.KeyDown(dir);
+
+            double pressLen = _rnd.Next(Settings.PressMinMs, Settings.PressMaxMs + 1);
+            double holdExtra = _rnd.Next(Settings.HoldMinMs, Settings.HoldMaxMs + 1);
             _holdTimes[dir] = shouldHold
-                ? n.Time + n.Length + Settings.HoldReleaseMs
-                : now + Settings.PressMs;
+                ? n.Time + n.Length + holdExtra + jitter
+                : now + pressLen;
         }
 
         private void ReleaseExpiredHolds(double t)
@@ -243,8 +266,17 @@ namespace FNFBot.Core
             return false;
         }
 
-        /// <summary>Start/stop playback — the same action as pressing F1 on desktop.</summary>
-        public void TogglePlay()
+        public void Rewind()
+        {
+            _playing = false;
+            _watch.Reset();
+            if (_chartPath != null)
+                Load(_chartPath, _difficulty);
+            else
+                Emit("No chart loaded.");
+        }
+
+        public void PlayPause()
         {
             _playing = !_playing;
             Emit("Playing: " + _playing);
@@ -252,30 +284,54 @@ namespace FNFBot.Core
                 Load(_chartPath, _difficulty); // replay
         }
 
-        public void Play() { if (!_playing) TogglePlay(); }
-        public void Stop() { _playing = false; }
+        public void FastForward()
+        {
+            Emit("Fast-forward — skipping to end.");
+            _playing = false;
+            _ended = true;
+            Completed?.Invoke();
+        }
+
+        public void CloseChart()
+        {
+            _playing = false;
+            _stop = true;
+            _thread?.Join(200);
+            _stop = false;
+            _chartPath = null;
+            _difficulty = null;
+            _notes = new List<FNFSong.FNFNote>();
+            _watch.Reset();
+            _ended = false;
+            ReleaseAllHolds();
+            Emit("Chart closed.");
+            Loaded?.Invoke();
+        }
 
         public void HandleHotkey(BotHotkey hk)
         {
             switch (hk)
             {
-                case BotHotkey.TogglePlay:
-                    TogglePlay();
-                    break;
-                case BotHotkey.OffsetUp: Settings.Offset++; AfterSettingChange($"Offset: {Settings.Offset}"); break;
-                case BotHotkey.OffsetDown: Settings.Offset--; AfterSettingChange($"Offset: {Settings.Offset}"); break;
-                case BotHotkey.PressUp: Settings.PressMs += 5; AfterSettingChange($"Press hold: {Settings.PressMs}ms"); break;
-                case BotHotkey.PressDown: Settings.PressMs = Math.Max(1, Settings.PressMs - 5); AfterSettingChange($"Press hold: {Settings.PressMs}ms"); break;
-                case BotHotkey.HoldUp: Settings.HoldReleaseMs += 5; AfterSettingChange($"Sustain overhold: {Settings.HoldReleaseMs}ms"); break;
-                case BotHotkey.HoldDown: Settings.HoldReleaseMs -= 5; AfterSettingChange($"Sustain overhold: {Settings.HoldReleaseMs}ms"); break;
+                case BotHotkey.Rewind: Rewind(); break;
+                case BotHotkey.PlayPause: PlayPause(); break;
+                case BotHotkey.FastForward: FastForward(); break;
+                case BotHotkey.CloseChart: CloseChart(); break;
+                default: break;
             }
+        }
+
+        public void ApplySettings()
+        {
+            Settings.Save();
+            for (int i = 0; i < _noteJitter.Length && i < _notes.Count; i++)
+                _noteJitter[i] = _notes[i].Length > 0 ? 0 : ComputeJitter();
+            SettingsChanged?.Invoke();
         }
 
         private void AfterSettingChange(string msg)
         {
             Emit(msg);
-            Settings.Save();
-            SettingsChanged?.Invoke();
+            ApplySettings();
         }
 
         public void Dispose()

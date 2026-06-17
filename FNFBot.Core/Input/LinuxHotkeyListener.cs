@@ -103,7 +103,7 @@ namespace FNFBot.Core.Input
                             continue;
 
                         int idx = code - KEY_F1;
-                        if (idx >= 0 && idx <= 6)
+                        if (idx >= 0 && idx <= 3)
                             Pressed?.Invoke((BotHotkey)idx);
                     }
                 }

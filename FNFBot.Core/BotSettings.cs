@@ -11,9 +11,14 @@ namespace FNFBot.Core
     {
         private const string SettingsFile = "bot.settings";
 
-        public int Offset = 25;        // ms to press before/after the note time
-        public int PressMs = 40;       // how long a tapped note is held down
-        public int HoldReleaseMs = 20; // extra ms a sustain is held past its end
+        public int Offset = 0;         // ms to press before/after the note time
+        public int FailCount = 0;       // max misses before bot stops (0 = never)
+        public int PressMinMs = 56;     // press low bound
+        public int PressMaxMs = 110;    // press high bound
+        public int HoldMinMs = 44;      // hold release low bound
+        public int HoldMaxMs = 90;      // hold release high bound
+        public bool AutoFail = false;   // randomly miss notes
+        public int PressRate = 100;     // accuracy 0-100 (100 = perfect)
 
         public static BotSettings Load()
         {
@@ -47,8 +52,14 @@ namespace FNFBot.Core
                     switch (key)
                     {
                         case "offset": s.Offset = num; break;
-                        case "press": s.PressMs = Math.Max(1, num); break;
-                        case "hold": s.HoldReleaseMs = num; break;
+                        case "failcount": s.FailCount = Math.Max(0, num); break;
+                        case "pressmin": s.PressMinMs = Math.Max(1, Math.Min(num, s.PressMaxMs)); break;
+                        case "pressmax": s.PressMaxMs = Math.Max(s.PressMinMs, num); break;
+                        case "holdmin": s.HoldMinMs = Math.Max(0, Math.Min(num, s.HoldMaxMs)); break;
+                        case "holdmax": s.HoldMaxMs = Math.Max(s.HoldMinMs, num); break;
+                        case "autofail": s.AutoFail = num != 0; break;
+                        case "pressrate": s.PressRate = Math.Max(0, Math.Min(100, num)); break;
+                        default: break;
                     }
                 }
             }
@@ -61,7 +72,10 @@ namespace FNFBot.Core
             try
             {
                 File.WriteAllText(SettingsFile,
-                    $"offset={Offset}\npress={PressMs}\nhold={HoldReleaseMs}\n");
+                    $"offset={Offset}\nfailcount={FailCount}\n" +
+                    $"pressmin={PressMinMs}\npressmax={PressMaxMs}\n" +
+                    $"holdmin={HoldMinMs}\nholdmax={HoldMaxMs}\n" +
+                    $"autofail={(AutoFail ? 1 : 0)}\npressrate={PressRate}\n");
             }
             catch { }
         }

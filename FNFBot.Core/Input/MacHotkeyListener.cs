@@ -6,7 +6,7 @@ using System.Threading;
 namespace FNFBot.Core.Input
 {
     /// <summary>
-    /// Detects F1-F7 globally by polling CGEventSourceKeyState (like Windows' GetAsyncKeyState).
+    /// Detects F1-F4 globally by polling CGEventSourceKeyState (like Windows' GetAsyncKeyState).
     /// Needs Input Monitoring / Accessibility permission on recent macOS.
     /// </summary>
     [SupportedOSPlatform("macos")]
@@ -20,8 +20,13 @@ namespace FNFBot.Core.Input
 
         private const int kCGEventSourceStateHIDSystemState = 1;
 
-        // macOS virtual key codes for F1..F7, mapped onto BotHotkey 0..6.
-        private static readonly ushort[] FKeys = { 122, 120, 99, 118, 96, 97, 98 };
+        // macOS virtual key codes for F1..F4, mapped onto BotHotkey 0..3.
+        private static readonly (ushort Key, BotHotkey Action)[] FKeys = {
+            (122, BotHotkey.Rewind),      // F1
+            (120, BotHotkey.PlayPause),   // F2
+            (99,  BotHotkey.FastForward), // F3
+            (96,  BotHotkey.CloseChart)   // F4
+        };
 
         private Thread _thread;
         private volatile bool _running;
@@ -45,9 +50,9 @@ namespace FNFBot.Core.Input
             {
                 for (int i = 0; i < FKeys.Length; i++)
                 {
-                    bool down = CGEventSourceKeyState(kCGEventSourceStateHIDSystemState, FKeys[i]);
+                    bool down = CGEventSourceKeyState(kCGEventSourceStateHIDSystemState, FKeys[i].Key);
                     if (down && !prev[i])
-                        Pressed?.Invoke((BotHotkey)i);
+                        Pressed?.Invoke(FKeys[i].Action);
                     prev[i] = down;
                 }
                 Thread.Sleep(20);

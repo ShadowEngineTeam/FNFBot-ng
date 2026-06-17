@@ -4,17 +4,14 @@ namespace FNFBot.Core.Input
 {
     public enum BotHotkey
     {
-        TogglePlay, // F1
-        OffsetUp,   // F2
-        OffsetDown, // F3
-        PressUp,    // F4
-        PressDown,  // F5
-        HoldUp,     // F6
-        HoldDown    // F7
+        Rewind,      // F1
+        PlayPause,   // F2
+        FastForward, // F3
+        CloseChart   // F4
     }
 
     /// <summary>
-    /// Watches global hotkeys (F1-F7) even when the game — not the bot — has focus.
+    /// Watches global hotkeys (F1-F4) even when the game — not the bot — has focus.
     /// Per-OS implementation (Windows = GetAsyncKeyState polling, etc.).
     /// </summary>
     public interface IHotkeyListener : IDisposable

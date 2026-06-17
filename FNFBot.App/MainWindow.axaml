@@ -10,12 +10,13 @@
   <Grid Margin="8" RowDefinitions="Auto,*,180,Auto">
 
     <!-- Header -->
-    <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,6">
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,0,0,6">
       <TextBlock Text="FNFBot" FontSize="22" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
       <TextBlock x:Name="TimeLabel" Grid.Column="1" Text="Time: 0" Foreground="White"
                  Margin="0,0,16,0" VerticalAlignment="Center"/>
       <TextBlock x:Name="OffsetLabel" Grid.Column="2" Text="Offset: 25" Foreground="White"
-                 VerticalAlignment="Center"/>
+                 Margin="0,0,8,0" VerticalAlignment="Center"/>
+      <Button Grid.Column="3" x:Name="SettingsBtn" Content="Settings" Margin="0,0,0,0"/>
     </Grid>
 
     <!-- Note field + console -->

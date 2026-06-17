@@ -1,6 +1,7 @@
 using System;
+using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FNFBot.Core;
@@ -28,9 +29,11 @@ namespace FNFBot.App
             BrowseBtn.Click += async (_, _) => await BrowseFolder();
             SongTree.DoubleTapped += (_, _) => PlaySelected();
             RenderCheck.IsCheckedChanged += (_, _) => Field.RenderEnabled = RenderCheck.IsChecked == true;
+            SettingsBtn.Click += async (_, _) => await ShowSettingsDialog();
 
             Closing += (_, _) => _engine.Dispose();
-            KeyDown += MainWindow_KeyDown;
+            // Global hotkey listener (WindowsHotkeyListener) already handles F1-F4 via
+            // GetAsyncKeyState polling. A window-level handler would double-fire.
 
             _labelTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
             _labelTimer.Tick += (_, _) =>
@@ -40,7 +43,7 @@ namespace FNFBot.App
             _labelTimer.Start();
 
             UpdateLabels();
-            AppendLog("Ready. Pick a folder, Check Dir, double-click a chart, then press F1 in-game.");
+            AppendLog("Ready. Pick a folder, Check Dir, double-click a chart, then press F2 in-game.");
 
             _engine.Start();
         }
@@ -103,26 +106,81 @@ namespace FNFBot.App
             }
         }
 
-        private void MainWindow_KeyDown(object sender, KeyEventArgs e)
+        private async System.Threading.Tasks.Task ShowSettingsDialog()
         {
-            BotHotkey? hk = e.Key switch
+            var s = _engine.Settings;
+            var win = new Window
             {
-                Key.F1 => BotHotkey.TogglePlay,
-                Key.F2 => BotHotkey.OffsetUp,
-                Key.F3 => BotHotkey.OffsetDown,
-                Key.F4 => BotHotkey.PressUp,
-                Key.F5 => BotHotkey.PressDown,
-                Key.F6 => BotHotkey.HoldUp,
-                Key.F7 => BotHotkey.HoldDown,
-                _ => null
+                Title = "Settings",
+                Width = 380,
+                Height = 520,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Icon = Icon,
+                CanResize = false
             };
 
-            if (hk.HasValue)
+            var panel = new StackPanel { Margin = new Thickness(12), Spacing = 6 };
+            var offsetRow = MakeSliderRow("Offset", s.Offset, -200, 200);
+            var failRow = MakeSliderRow("Fail count", s.FailCount, 0, 200);
+            var pressMinRow = MakeSliderRow("Press min", s.PressMinMs, 1, 200);
+            var pressMaxRow = MakeSliderRow("Press max", s.PressMaxMs, 1, 200);
+            var holdMinRow = MakeSliderRow("Hold min", s.HoldMinMs, 0, 200);
+            var holdMaxRow = MakeSliderRow("Hold max", s.HoldMaxMs, 0, 200);
+            var autoFailBox = new CheckBox { Content = "Auto fail (miss notes)", IsChecked = s.AutoFail, Margin = new Thickness(0, 2, 0, 0) };
+            var pressRateRow = MakeSliderRow("Press rate", s.PressRate, 0, 100);
+            panel.Children.Add(offsetRow);
+            panel.Children.Add(failRow);
+            panel.Children.Add(pressMinRow);
+            panel.Children.Add(pressMaxRow);
+            panel.Children.Add(holdMinRow);
+            panel.Children.Add(holdMaxRow);
+            panel.Children.Add(autoFailBox);
+            panel.Children.Add(pressRateRow);
+
+            var saveBtn = new Button { Content = "Save", HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
+            panel.Children.Add(saveBtn);
+
+            win.Content = panel;
+
+            saveBtn.Click += (_, _) =>
             {
-                e.Handled = true;
-                // Route through the engine's hotkey handler.
-                _engine.HandleHotkey(hk.Value);
-            }
+                s.Offset = (int)((Slider)offsetRow.Children[1]).Value;
+                s.FailCount = (int)((Slider)failRow.Children[1]).Value;
+                s.PressMinMs = (int)((Slider)pressMinRow.Children[1]).Value;
+                s.PressMaxMs = (int)((Slider)pressMaxRow.Children[1]).Value;
+                s.HoldMinMs = (int)((Slider)holdMinRow.Children[1]).Value;
+                s.HoldMaxMs = (int)((Slider)holdMaxRow.Children[1]).Value;
+                s.AutoFail = autoFailBox.IsChecked == true;
+                s.PressRate = (int)((Slider)pressRateRow.Children[1]).Value;
+                _engine.ApplySettings();
+                win.Close();
+            };
+
+            await win.ShowDialog(this);
         }
+
+        private static Grid MakeSliderRow(string label, int val, int min, int max)
+        {
+            var slider = new Slider
+            {
+                Value = val,
+                Minimum = min,
+                Maximum = max,
+                TickFrequency = 1,
+                IsSnapToTickEnabled = true
+            };
+            var valText = new TextBlock { Text = val.ToString(), VerticalAlignment = VerticalAlignment.Center, Width = 30, HorizontalAlignment = HorizontalAlignment.Right };
+            slider.ValueChanged += (_, _) => valText.Text = ((int)slider.Value).ToString();
+
+            var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(0, 0, 0, 4) };
+            g.Children.Add(new TextBlock { Text = label + ":", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
+            Grid.SetColumn(slider, 1);
+            slider.Margin = new Thickness(0, 0, 6, 0);
+            g.Children.Add(slider);
+            Grid.SetColumn(valText, 2);
+            g.Children.Add(valText);
+            return g;
+        }
+
     }
 }
