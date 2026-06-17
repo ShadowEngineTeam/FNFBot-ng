@@ -11,8 +11,7 @@ namespace FNFBot.Core.Input
     }
 
     /// <summary>
-    /// Watches global hotkeys (F1-F4) even when the game — not the bot — has focus.
-    /// Per-OS implementation (Windows = GetAsyncKeyState polling, etc.).
+    /// Watches global hotkeys (F1-F4) even when the game has focus.
     /// </summary>
     public interface IHotkeyListener : IDisposable
     {

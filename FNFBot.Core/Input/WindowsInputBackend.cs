@@ -5,10 +5,8 @@ using System.Runtime.Versioning;
 namespace FNFBot.Core.Input
 {
     /// <summary>
-    /// Windows key injection via SendInput. HaxeFlixel engines run on Lime/SDL (SDL2 and
-    /// SDL3), which identify keys by their hardware SCANCODE, not the virtual-key code — so
-    /// we inject the real extended arrow-key scancodes. The arrow scancodes are identical
-    /// across SDL2 and SDL3.
+    /// Windows key injection via SendInput. HaxeFlixel/Lime games identify keys by hardware
+    /// SCANCODE rather than virtual-key code, so we inject the real extended arrow scancodes.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public sealed class WindowsInputBackend : IInputBackend

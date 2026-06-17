@@ -1,108 +1,85 @@
-# FNFBot Rewrite
-## The better version of FNFBot
+# FNFBot
 
-### WARNING!
+A bot that automatically plays Friday Night Funkin' charts by injecting key presses in time with an internal stopwatch.
 
-FNFBot doesn't know where the song starts on its own — you press **F1** at the right
-moment to start/stop it in sync. So don't open issues saying it "hits notes early" or
-whatever.
-
-## extra keys won't be added, stop asking for it ##
-
-### What is FNFBot?
-
-FNFBot is a bot program that lets users automatically play Friday Night Funkin' charts.
+> **Timing note** - FNFBot doesn't know when a song actually starts in-game. Press **F2** at the right moment to sync playback. Use the offset setting to fine-tune early/late hits.
 
 ## Engine support
 
 FNFBot reads chart `.json` files directly. It supports:
 
-- The **base game** chart format (both `legacy` and V-Slice)
-- **Psych Engine** / **Shadow Engine** charts (`legacy` and `psych_v1`)
-- **Codename Engine** charts
+- **Base game** (legacy and V-Slice)
+- **Psych Engine** / **Shadow Engine** (`legacy` and `psych_v1`)
+- **Codename Engine**
 
 ## Requirements
 
-Cross-platform on **.NET 8** (needs the .NET 8 runtime). The recommended app is the
-Avalonia UI (`FNFBot.App`), which runs on Windows, Linux and macOS.
+Cross-platform on **.NET 8**. The app (`FNFBot.App`) uses Avalonia UI and runs on Windows, Linux, and macOS.
 
-Key injection / global hotkeys are per-OS:
+Key injection and global hotkeys are per-OS:
 
-- **Windows** — works out of the box (`SendInput` + `GetAsyncKeyState`).
-- **Linux** — injects keys via `/dev/uinput` (works on X11 **and** Wayland) and reads
-  `/dev/input/event*` for the F1-F7 hotkeys. Both need device access:
+- **Windows** - works out of the box (`SendInput` + `GetAsyncKeyState`).
+- **Linux** - injects keys via `/dev/uinput` (X11 and Wayland) and reads `/dev/input/event*` for hotkeys. Both need device access:
 
   ```bash
-  # 1) read access to keyboards (for the F-key hotkeys)
+  # read access to keyboards (for hotkeys)
   sudo usermod -aG input "$(whoami)"
 
-  # 2) write access to /dev/uinput (for sending presses) — the input group alone
-  #    does NOT cover uinput, so add a udev rule:
+  # write access to /dev/uinput (for sending key presses)
   echo 'KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"' \
     | sudo tee /etc/udev/rules.d/99-uinput.rules
   sudo modprobe uinput
   sudo udevadm control --reload-rules && sudo udevadm trigger
   ```
 
-  Then **log out and back in** (so the `input` group applies) and relaunch. Don't run the
-  app with `sudo` — GUI apps misbehave under it, and the group/udev setup above is the
-  proper fix.
-- **macOS** — uses `CGEvent`. Grant the app **Accessibility** (and Input Monitoring)
-  permission under System Settings → Privacy & Security, or injected keys are ignored.
+  Log out and back in so the `input` group takes effect, then relaunch. Don't run the app with `sudo` - the group/udev setup is the right fix.
 
-If input can't initialise (e.g. missing permissions) the app still runs and shows the
-reason in its log; only key sending is disabled.
+- **macOS** - uses `CGEvent`. Grant **Accessibility** (and Input Monitoring) permission under System Settings -> Privacy & Security.
+
+If key injection fails (e.g. missing permissions) the app still runs and shows the reason in the log.
 
 ## Building
-
-Builds with the latest Visual Studio or the .NET SDK:
 
 ```
 dotnet build FNFBot.sln -c Release
 ```
 
-Run the cross-platform app from `FNFBot.App` (builds as `FNFBot`); the parsers and engine
-live in the shared `FNFBot.Core` library. No external chart libraries are required.
+Run the app from `FNFBot.App`; the parsers and engine live in the shared `FNFBot.Core` library.
 
-Any RID-targeted publish produces a **single self-contained binary** (no .NET install needed):
+Any RID-targeted publish produces a single self-contained binary (no .NET install needed):
 
 ```
-dotnet publish FNFBot.App/FNFBot.App.csproj -c Release -r linux-x64   # -> one file: FNFBot
+dotnet publish FNFBot.App/FNFBot.App.csproj -c Release -r linux-x64
 ```
 
-CI builds the app on Windows, Linux and macOS; tagging `v*` publishes a single self-contained
-binary per OS/arch (win/linux/osx × x64/arm64) and attaches them to a GitHub Release.
+CI builds on Windows, Linux, and macOS. Tagging `v*` publishes a self-contained binary per OS/arch (win/linux/osx x64/arm64) as a GitHub Release.
 
-### How do I use FNFBot?
+## Usage
 
-FNFBot has 3 main sections, as shown here:
+1. Enter the game or mod folder path and click **Check Dir** to scan for charts.
+2. Double-click a chart in the tree to load it.
+3. Start the song in-game, then press **F2** at the downscroll start to sync.
 
+The console logs what the bot is doing. The note field shows upcoming notes and hold lengths.
 
-![3Sections](https://i.imgur.com/fwlUZPg.png)
+### Hotkeys
 
-The **red** section is where you enter all the data like the game's directory on your computer.
+| Key | Action |
+|-----|--------|
+| F1  | Rewind (reload the chart from the beginning) |
+| F2  | Play / Pause |
+| F3  | Fast-forward (skip to end) |
+| F4  | Close chart |
 
-The **green** area is the console, this outputs useful information.
+### Settings
 
-Examples:
+Click **Settings** to open the timing dialog. All values are saved to `bot.settings` next to the executable and can also be edited by hand (`key=value` per line).
 
-- What happened when you pressed a keybind
-- What notes the bot's planning on hitting
-- When the bot completes a song
-
-The **blue** section is where the bot renders the notes that are *probably* there, including the length of held notes.
-
-### Keybinds
-
-| Keybind | Description |
-| ------- | ----------- |
-| F1 | Start/Stop playing the selected map |
-| F2 / F3 | Increase / decrease the **offset** |
-| F4 / F5 | Increase / decrease the **press duration** |
-| F6 / F7 | Increase / decrease the **sustain overhold** |
-
-- **Offset**: ms to hit before/after the note time (default 25).
-- **Press duration**: how long each tapped note is held down, in ms (default 40). Raise it to play more like a human.
-- **Sustain overhold**: extra ms a hold note is kept down past its true end so the tail's final piece always registers (default 20). Increase this if the bot drops the end of long notes.
-
-All three are saved to `bot.settings` next to the exe (one `key=value` per line), so you can also edit them by hand.
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Offset | 0 | ms added to every hit time (negative = hit earlier) |
+| Press min / max | 56 / 110 | Random tap hold duration range (ms) |
+| Hold min / max | 44 / 90 | Extra ms to keep a sustain held past its tail end |
+| Press rate | 100 | Accuracy 0-100; below 100 adds random timing jitter |
+| Auto fail | off | Randomly miss ~10% of tapped notes |
+| Fail count | 0 | Reserved, not yet enforced |

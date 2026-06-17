@@ -20,12 +20,12 @@ namespace FNFBot.Core.Input
 
         private const int kCGEventSourceStateHIDSystemState = 1;
 
-        // macOS virtual key codes for F1..F4, mapped onto BotHotkey 0..3.
+        // macOS virtual key codes for F1..F4.
         private static readonly (ushort Key, BotHotkey Action)[] FKeys = {
-            (122, BotHotkey.Rewind),      // F1
-            (120, BotHotkey.PlayPause),   // F2
-            (99,  BotHotkey.FastForward), // F3
-            (96,  BotHotkey.CloseChart)   // F4
+            (122, BotHotkey.Rewind),
+            (120, BotHotkey.PlayPause),
+            (99,  BotHotkey.FastForward),
+            (96,  BotHotkey.CloseChart)
         };
 
         private Thread _thread;

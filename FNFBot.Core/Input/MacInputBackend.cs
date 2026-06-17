@@ -5,9 +5,8 @@ using System.Runtime.Versioning;
 namespace FNFBot.Core.Input
 {
     /// <summary>
-    /// macOS key injection via CoreGraphics events (CGEventPost). Requires the app to be
-    /// granted **Accessibility** permission (System Settings → Privacy &amp; Security →
-    /// Accessibility); without it macOS silently drops the injected events.
+    /// macOS key injection via CGEventPost. Without Accessibility permission, macOS silently
+    /// drops injected events.
     /// </summary>
     [SupportedOSPlatform("macos")]
     public sealed class MacInputBackend : IInputBackend

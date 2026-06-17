@@ -6,12 +6,8 @@ using System.Text;
 namespace FNFBot.Core.Input
 {
     /// <summary>
-    /// Linux key injection through <c>/dev/uinput</c>. uinput creates a virtual keyboard at
-    /// the kernel level, so injected keys are seen by both X11 and Wayland games.
-    ///
-    /// Requires write access to <c>/dev/uinput</c> — add the user to the <c>input</c> group
-    /// or install a udev rule. If the device can't be opened, construction throws and the
-    /// app falls back to a no-op backend with the error surfaced in the log.
+    /// Linux key injection via /dev/uinput. Creates a virtual keyboard at the kernel level,
+    /// so injected keys work on both X11 and Wayland.
     /// </summary>
     [SupportedOSPlatform("linux")]
     public sealed class LinuxInputBackend : IInputBackend, IDisposable
@@ -90,7 +86,6 @@ namespace FNFBot.Core.Input
         {
             if (_fd < 0) return;
 
-            // One write of [EV_KEY event][EV_SYN report].
             var buf = new byte[EvSize * 2];
             WriteEvent(buf, 0, EV_KEY, code, value);
             WriteEvent(buf, EvSize, EV_SYN, SYN_REPORT, 0);

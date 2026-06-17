@@ -6,8 +6,7 @@ namespace FNFBot.App
 {
     internal static class Program
     {
-        // Raise the system timer resolution to 1ms on Windows so the play loop's Thread.Sleep
-        // is fine-grained (default is ~15.6ms). No-op / not needed on Linux & macOS.
+        // 1ms timer resolution on Windows so Thread.Sleep in the play loop is fine-grained (default ~15.6ms).
         [DllImport("winmm.dll")] private static extern uint timeBeginPeriod(uint uMilliseconds);
 
         [STAThread]

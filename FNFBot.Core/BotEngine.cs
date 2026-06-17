@@ -9,9 +9,9 @@ using FridayNightFunkin;
 namespace FNFBot.Core
 {
     /// <summary>
-    /// The platform-independent bot: parses a chart, then on F1 plays it by injecting key
-    /// presses in time with its own stopwatch. UI-agnostic — it reports via events and reads
-    /// nothing from any windowing toolkit.
+    /// The platform-independent bot: parses a chart, then on F2 plays it by injecting key
+    /// presses in time with its own stopwatch. Reports via events and reads nothing from any
+    /// windowing toolkit.
     /// </summary>
     public sealed class BotEngine : IDisposable
     {
