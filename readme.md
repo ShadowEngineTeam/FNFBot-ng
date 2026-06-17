@@ -46,14 +46,6 @@ dotnet build FNFBot.sln -c Release
 
 Run the app from `FNFBot.App`; the parsers and engine live in the shared `FNFBot.Core` library.
 
-Any RID-targeted publish produces a single self-contained binary (no .NET install needed):
-
-```
-dotnet publish FNFBot.App/FNFBot.App.csproj -c Release -r linux-x64
-```
-
-CI builds on Windows, Linux, and macOS. Tagging `v*` publishes a self-contained binary per OS/arch (win/linux/osx x64/arm64) as a GitHub Release.
-
 ## Usage
 
 1. Enter the game or mod folder path and click **Check Dir** to scan for charts.
