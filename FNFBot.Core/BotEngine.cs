@@ -208,7 +208,8 @@ namespace FNFBot.Core
             if (Settings.PressRate >= 100)
                 return 0;
 
-            double maxJitter = (100 - Settings.PressRate) * 1.6;
+            double t = (100 - Settings.PressRate) / 100.0;
+            double maxJitter = t * t * t * 160; // cubic: tiny at high PR
             double j = _rnd.NextDouble() * maxJitter;
             if (_rnd.NextDouble() < 0.3)
                 j = -Math.Min(j, 60);
