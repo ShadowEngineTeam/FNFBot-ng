@@ -267,14 +267,14 @@ namespace FNFBot.Core
             double pos = _mem.InterpolatedMs;
             bool advancing = _mem.Advancing;
 
-            // Left gameplay or restarted: while armed, songPosition snapped back toward
-            // the start. Disarm before anything else; only a fresh negative countdown
-            // re-arms, so a menu / freeplay autoplay preview that drives the same global
-            // songPosition forward (Codename, Psych music player) can't make us press.
-            // Don't disarm when the backward jump lands in the countdown range (pos < 0),
-            // because that's a song restart (the countdown goes -800→0), not an exit.
-            // Without this guard, a pause-screen arm then restart triggers a spurious
-            // disarm since _memLastT is frozen near 0 and the restart jumps to -800.
+            // While armed, a backward jump of more than one beat means we left gameplay
+            // (menu, freeplay, song complete). Disarm so the bot doesn't press during
+            // menu autoplay previews that drive the same songPosition forward.
+            // Only re-arm on a fresh negative countdown.
+            // Don't disarm when the backward jump lands in the countdown range (pos < 0):
+            // that's a song restart (countdown goes -800→0), not an exit.  Without this
+            // guard, a pause-screen arm followed by restart would spuriously disarm because
+            // _memLastT is frozen near 0 and the restart jumps to -800.
             if (_memArmed && pos - _memLastT < -250 && pos >= 0 && pos < ReentryGuardMs)
             {
                 Disarm("song ended or exited gameplay");

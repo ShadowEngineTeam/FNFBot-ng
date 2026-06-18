@@ -96,11 +96,9 @@ namespace FNFBot.Core.Memory
             if (max <= min)
                 return;
 
-            // hxcpp primitive statics (e.g. Conductor.songPosition, a Float) live in the
-            // executable's .bss, which Linux maps as an anonymous writable region right after
-            // the file-backed data. Extend the module range through those contiguous anonymous
-            // regions so the module scan covers them (otherwise it misses songPosition and
-            // falls back to a full scan that can lock an unrelated counter).
+            // Static fields (e.g. Conductor.songPosition, a Float) live in the executable's
+            // .bss, which Linux maps as anonymous writable regions right after the file-backed
+            // data.  Extend the module range through those so the module-wide scan covers them.
             ExtendBss(ref max);
 
             ModuleBase = min;

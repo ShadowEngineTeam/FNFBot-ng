@@ -7,12 +7,14 @@ namespace FNFBot.Core.Memory
     /// Finds and follows <c>Conductor.songPosition</c> for engines that keep it as a module
     /// static (Psych, Shadow, Codename), exposing a smooth play clock.
     ///
-    /// <para>songPosition is a Haxe static Float (a 64-bit double in the module's writable
-    /// data). It can't be matched by value (zeroed RAM is 0.0 and the time range matches
-    /// millions of doubles), so it's matched by behaviour: snapshot every in-range double in
-    /// the module's writable pages twice a fixed interval apart, keep the ones advancing at
-    /// ~1ms/ms, and lock after a few confirmations. A wrong lock is harmless: the bot only
-    /// presses on the negative countdown ramp, which a stray counter never produces.</para>
+    /// <para>songPosition is a Haxe static Float (a 64-bit double).  It lives in the native
+    /// executable's .bss section, which the Linux backend resolves as a tail extension of the
+    /// file-backed module range (<see cref="LinuxProcessMemory.ExtendBss"/>).  Matching by
+    /// value is impossible (zeroed RAM is 0.0, and the time range matches millions of doubles),
+    /// so the clock matches by <em>behaviour</em>: two snapshots of every in-range double in
+    /// the module's writable pages, keeping those that advance at ~1 ms/ms.  Locking on a
+    /// false positive is harmless because the bot never presses without a confirmed negative
+    /// countdown — see <see cref="BotEngine.UpdateArm"/>.</para>
     ///
     /// <para>Shared base; subclasses (<see cref="PsychSongClock"/>, <see cref="CodenameSongClock"/>)
     /// only set the label and name match. V-Slice's heap singleton uses <see cref="VSliceSongClock"/>.</para>
@@ -31,9 +33,9 @@ namespace FNFBot.Core.Memory
         private const long MaxDtMs = 600;
         private const long MaxDtFullMs = 30_000;
 
-        // If a module-only scan never locks, widen to a full writable-memory sweep. This
-        // covers engines whose statics live in a .so, and games run through Wine/Box64/FEX
-        // where /proc/<pid>/exe is the loader rather than the game.
+        // If the module-only scan hasn't locked after this many cycles, widen to a full
+        // writable-memory sweep.  This mainly covers games running through Wine/Box64/FEX
+        // where /proc/<pid>/exe is the loader rather than the game binary.
         private const int EscalateAfterCycles = 160; // ~19 s of module scan before widening
 
         // In full-scan mode, only candidates seen going through the negative countdown are
@@ -214,12 +216,12 @@ namespace FNFBot.Core.Memory
                     _scanCycles++;
                     TryLock();
 
-                    // Module-only scan came up empty: widen to all writable memory (a .so
-                    // build, or a game hosted by Wine/Box64/FEX where the module is the loader).
+                    // Module-only scan hasn't locked: widen to all writable memory.  Needed
+                    // for games running through Wine/Box64/FEX where the loader is the module.
                     if (!_located && moduleOnly && _scanCycles >= EscalateAfterCycles)
                     {
                         _fullScan = true;
-                        _log?.Invoke($"{EngineName}: songPosition isn't in the module; widening to a full scan. Start or restart a song so the countdown can be caught.");
+                        _log?.Invoke($"{EngineName}: module scan timed out; widening to a full-sweep scan. Start or restart a song so the countdown can be caught.");
                         ResetScan();
                         return;
                     }
