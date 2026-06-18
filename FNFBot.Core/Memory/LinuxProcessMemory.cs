@@ -101,27 +101,36 @@ namespace FNFBot.Core.Memory
             // the file-backed data. Extend the module range through those contiguous anonymous
             // regions so the module scan covers them (otherwise it misses songPosition and
             // falls back to a full scan that can lock an unrelated counter).
-            ulong extendStart = max, extended = 0;
+            ExtendBss(ref max);
+
+            ModuleBase = min;
+            ModuleEnd = max;
+        }
+
+        /// <summary>
+        /// Extends <paramref name="end"/> through contiguous anonymous writable regions
+        /// (the .bss segment of a native executable or library on Linux).
+        /// </summary>
+        private void ExtendBss(ref ulong end)
+        {
+            ulong extended = 0;
             bool grew = true;
             while (grew && extended < 512UL * 1024 * 1024)
             {
                 grew = false;
-                foreach (var (start, end, perms, path) in Maps())
+                foreach (var (regionStart, regionEnd, perms, path) in Maps())
                 {
-                    if (start == max && string.IsNullOrEmpty(path)
+                    if (regionStart == end && string.IsNullOrEmpty(path)
                         && perms.Length >= 2 && perms[1] == 'w'
-                        && end - start <= 256UL * 1024 * 1024)
+                        && regionEnd - regionStart <= 256UL * 1024 * 1024)
                     {
-                        extended += end - max;
-                        max = end;
+                        extended += regionEnd - end;
+                        end = regionEnd;
                         grew = true;
                         break;
                     }
                 }
             }
-
-            ModuleBase = min;
-            ModuleEnd = max;
         }
 
         /// <summary>True if the executable is a compatibility/emulation loader (Wine, Box64,

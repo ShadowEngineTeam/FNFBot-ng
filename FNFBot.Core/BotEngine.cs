@@ -271,7 +271,11 @@ namespace FNFBot.Core
             // the start. Disarm before anything else; only a fresh negative countdown
             // re-arms, so a menu / freeplay autoplay preview that drives the same global
             // songPosition forward (Codename, Psych music player) can't make us press.
-            if (_memArmed && pos - _memLastT < -250 && pos < ReentryGuardMs)
+            // Don't disarm when the backward jump lands in the countdown range (pos < 0),
+            // because that's a song restart (the countdown goes -800→0), not an exit.
+            // Without this guard, a pause-screen arm then restart triggers a spurious
+            // disarm since _memLastT is frozen near 0 and the restart jumps to -800.
+            if (_memArmed && pos - _memLastT < -250 && pos >= 0 && pos < ReentryGuardMs)
             {
                 Disarm("song ended or exited gameplay");
                 _memLastT = pos;

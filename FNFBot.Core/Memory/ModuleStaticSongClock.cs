@@ -29,12 +29,18 @@ namespace FNFBot.Core.Memory
         // tolerates a much wider interval; the slope band still rejects junk.
         private const long MinDtMs = 40;
         private const long MaxDtMs = 600;
-        private const long MaxDtFullMs = 6000;
+        private const long MaxDtFullMs = 30_000;
 
         // If a module-only scan never locks, widen to a full writable-memory sweep. This
         // covers engines whose statics live in a .so, and games run through Wine/Box64/FEX
         // where /proc/<pid>/exe is the loader rather than the game.
-        private const int EscalateAfterCycles = 6;
+        private const int EscalateAfterCycles = 160; // ~19 s of module scan before widening
+
+        // In full-scan mode, only candidates seen going through the negative countdown are
+        // the real songPosition (everything else is a decoy like uptime).  If no negative
+        // candidate appears within this many cycles, fall back to the best non-negative
+        // candidate so the bot doesn't wait forever when attached mid-song or in freeplay.
+        private const int FullScanNegCycles = 60;
 
         // A candidate advancing within this slope band (ms moved / ms elapsed) is a
         // clock. Wide enough to tolerate the engine's playbackRate and per-frame lerp.
@@ -42,7 +48,8 @@ namespace FNFBot.Core.Memory
         private const double SlopeMax = 2.50;
 
         private const int LockHits = 4;        // confirmations needed to lock
-        private const int LockHitsIfNeg = 2;   // fewer if we caught it going negative
+        private const int LockHitsIfNeg = 1;   // one slope match + countdown dip is enough
+        private const double NegThreshold = -250; // deep countdown, not noise
         private const long FreshMs = 150;      // value changed this recently => advancing
         private const int MaxReadFails = 12;   // dropped lock after this many failed reads
 
@@ -199,7 +206,7 @@ namespace FNFBot.Core.Memory
                         {
                             _hits.TryGetValue(kv.Key, out int h);
                             _hits[kv.Key] = h + 1;
-                            if (kv.Value < 0)
+                            if (kv.Value < NegThreshold)
                                 _sawNeg.Add(kv.Key);
                         }
                     }
@@ -268,16 +275,18 @@ namespace FNFBot.Core.Memory
             int bestScore = int.MinValue;
             bool bestNeg = false, bestInModule = false;
 
-            // In a full memory scan there is no module to fence out decoys (uptime/frame
-            // counters that also advance ~1ms/ms), so only the countdown identifies the real
-            // songPosition: require a candidate we have seen go negative.
-            bool requireNeg = _fullScan || !_mem.HasModule;
-
             foreach (var kv in _hits)
             {
                 bool neg = _sawNeg.Contains(kv.Key);
+
+                // In full-scan / no-module mode, the only reliable signal distinguishing
+                // songPosition from decoys (uptime counters, etc.) is the negative countdown.
+                // Require it, but fall back to the best candidate after enough cycles.
+                bool requireNeg = (_fullScan || !_mem.HasModule)
+                               && _scanCycles < FullScanNegCycles;
                 if (requireNeg && !neg)
                     continue;
+
                 int need = neg ? LockHitsIfNeg : LockHits;
                 if (kv.Value < need)
                     continue;
