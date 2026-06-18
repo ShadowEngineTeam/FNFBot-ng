@@ -34,7 +34,7 @@ namespace FNFBot.Core.Memory
         // If a module-only scan never locks, widen to a full writable-memory sweep. This
         // covers engines whose statics live in a .so, and games run through Wine/Box64/FEX
         // where /proc/<pid>/exe is the loader rather than the game.
-        private const int EscalateAfterCycles = 10;
+        private const int EscalateAfterCycles = 6;
 
         // A candidate advancing within this slope band (ms moved / ms elapsed) is a
         // clock. Wide enough to tolerate the engine's playbackRate and per-frame lerp.
@@ -212,7 +212,7 @@ namespace FNFBot.Core.Memory
                     if (!_located && moduleOnly && _scanCycles >= EscalateAfterCycles)
                     {
                         _fullScan = true;
-                        _log?.Invoke($"{EngineName}: nothing in the module, widening to a full memory scan (emulated host or split module?).");
+                        _log?.Invoke($"{EngineName}: songPosition isn't in the module; widening to a full scan. Start or restart a song so the countdown can be caught.");
                         ResetScan();
                         return;
                     }
@@ -268,9 +268,16 @@ namespace FNFBot.Core.Memory
             int bestScore = int.MinValue;
             bool bestNeg = false, bestInModule = false;
 
+            // In a full memory scan there is no module to fence out decoys (uptime/frame
+            // counters that also advance ~1ms/ms), so only the countdown identifies the real
+            // songPosition: require a candidate we have seen go negative.
+            bool requireNeg = _fullScan || !_mem.HasModule;
+
             foreach (var kv in _hits)
             {
                 bool neg = _sawNeg.Contains(kv.Key);
+                if (requireNeg && !neg)
+                    continue;
                 int need = neg ? LockHitsIfNeg : LockHits;
                 if (kv.Value < need)
                     continue;
