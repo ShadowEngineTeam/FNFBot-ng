@@ -217,7 +217,7 @@ namespace FNFBot.Core
             }
         }
 
-        /// <summary>The original manual path: F2 starts a stopwatch and we press to it.</summary>
+        /// <summary>Manual path: F2 starts a stopwatch and we press to it.</summary>
         private void ManualStep(ref int hitIndex, ref bool completedLogged)
         {
             if (!_playing)

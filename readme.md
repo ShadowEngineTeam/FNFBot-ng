@@ -70,7 +70,7 @@ Reading another process's memory needs elevated rights:
 - **Linux** - the no-sudo route is to keep the `input`-group setup above and relax ptrace once per boot (`sudo sysctl -w kernel.yama.ptrace_scope=0`), then run the app normally. Running the whole app with `sudo` also works but bypasses the `input`-group setup.
 - **macOS** - launch the bot with `sudo` so `task_for_pid` can read the game.
 
-Attach covers the engines that keep `songPosition` as a module static (Psych, Shadow, Codename, Kade, Nightmare Vision, Troll, and unrecognised forks via a generic fallback). **Funkin V-Slice** uses an experimental heap-scan path, and **macOS** attach is experimental and unverified on hardware. When attach is unavailable the manual **F2** workflow always works. 32-bit builds (Windows x86, Linux arm) can only attach to 32-bit games.
+Attach covers the engines that keep `songPosition` as a module static (Psych, Shadow, Codename, Kade, Nightmare Vision, Troll, and unrecognised forks via a generic fallback). **Funkin V-Slice** and **macOS** attach are experimental. When attach is unavailable the manual **F2** workflow always works. 32-bit builds (Windows x86, Linux arm) can only attach to 32-bit games.
 
 Games run through a compatibility or translation layer also work, because the game's memory lives inside the host process: the bot scans all of its writable memory for the Conductor (a bit slower to lock). On Linux it auto-detects the loader (**Wine, Box64, FEX, QEMU**); on macOS it always full-scans, so **Wine / CrossOver** and **Rosetta 2** are covered too. Pick the game's process in the attach list.
 

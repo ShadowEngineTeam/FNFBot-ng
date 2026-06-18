@@ -7,11 +7,9 @@ namespace FNFBot.Core.Memory
 {
     /// <summary>
     /// macOS backend (experimental): reads via Mach VM (<c>task_for_pid</c> +
-    /// <c>mach_vm_read_overwrite</c> + <c>mach_vm_region</c>). <c>task_for_pid</c> needs root
-    /// for other apps, so run the bot with <c>sudo</c>. The target's module range isn't
-    /// resolved (that needs dyld image parsing), so the song clocks fall back to a full
-    /// writable-memory scan. All Mach calls are guarded so a symbol/permission problem
-    /// degrades to "attach unavailable, use manual F2" instead of crashing.
+    /// <c>mach_vm_read_overwrite</c> + <c>mach_vm_region</c>). <c>task_for_pid</c> needs root,
+    /// so run the bot with <c>sudo</c>. No module range is resolved, so the song clocks scan
+    /// all writable memory. Mach calls are guarded, falling back to manual F2 on any failure.
     /// </summary>
     public sealed class MacProcessMemory : ProcessMemory
     {

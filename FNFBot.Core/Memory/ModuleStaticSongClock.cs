@@ -265,8 +265,8 @@ namespace FNFBot.Core.Memory
         private void TryLock()
         {
             ulong best = 0;
-            int bestScore = 0;
-            bool bestNeg = false;
+            int bestScore = int.MinValue;
+            bool bestNeg = false, bestInModule = false;
 
             foreach (var kv in _hits)
             {
@@ -275,14 +275,17 @@ namespace FNFBot.Core.Memory
                 if (kv.Value < need)
                     continue;
 
-                // Prefer the most-confirmed candidate; tie-break toward one we saw go
-                // negative (a true song clock with a real countdown).
-                int score = kv.Value + (neg ? 100 : 0);
+                // Strongest signal first: a value we saw go negative is a real countdown.
+                // Next, prefer a value inside the executable's module (where the static lives)
+                // over a stray counter in some library/heap region. Then most confirmations.
+                bool inModule = _mem.HasModule && kv.Key >= _mem.ModuleBase && kv.Key < _mem.ModuleEnd;
+                int score = kv.Value + (neg ? 1_000_000 : 0) + (inModule ? 1_000 : 0);
                 if (score > bestScore)
                 {
                     bestScore = score;
                     best = kv.Key;
                     bestNeg = neg;
+                    bestInModule = inModule;
                 }
             }
 
@@ -297,7 +300,8 @@ namespace FNFBot.Core.Memory
             _value = v;
             _lastChangeTicks = Now;
             _readFails = 0;
-            _log?.Invoke($"Locked {EngineName} songPosition @ 0x{best:X} = {v:0}ms after {_scanCycles} scans" + (bestNeg ? " (saw countdown)." : "."));
+            string where = bestInModule ? "in module" : (_mem.HasModule ? "outside module" : "no module");
+            _log?.Invoke($"Locked {EngineName} songPosition @ 0x{best:X} = {v:0}ms ({where}){(bestNeg ? ", saw countdown" : "")} after {_scanCycles} scans.");
             ResetScan();
         }
     }

@@ -93,11 +93,35 @@ namespace FNFBot.Core.Memory
                 if (start < min) min = start;
                 if (end > max) max = end;
             }
-            if (max > min)
+            if (max <= min)
+                return;
+
+            // hxcpp primitive statics (e.g. Conductor.songPosition, a Float) live in the
+            // executable's .bss, which Linux maps as an anonymous writable region right after
+            // the file-backed data. Extend the module range through those contiguous anonymous
+            // regions so the module scan covers them (otherwise it misses songPosition and
+            // falls back to a full scan that can lock an unrelated counter).
+            ulong extendStart = max, extended = 0;
+            bool grew = true;
+            while (grew && extended < 512UL * 1024 * 1024)
             {
-                ModuleBase = min;
-                ModuleEnd = max;
+                grew = false;
+                foreach (var (start, end, perms, path) in Maps())
+                {
+                    if (start == max && string.IsNullOrEmpty(path)
+                        && perms.Length >= 2 && perms[1] == 'w'
+                        && end - start <= 256UL * 1024 * 1024)
+                    {
+                        extended += end - max;
+                        max = end;
+                        grew = true;
+                        break;
+                    }
+                }
             }
+
+            ModuleBase = min;
+            ModuleEnd = max;
         }
 
         /// <summary>True if the executable is a compatibility/emulation loader (Wine, Box64,
@@ -143,14 +167,24 @@ namespace FNFBot.Core.Memory
 
         public override IEnumerable<(ulong addr, ulong size)> WritableRegions(bool moduleOnly)
         {
-            foreach (var (start, end, perms, path) in Maps())
+            // Module-only is range-based (covers the exe's data and the .bss tail resolved in
+            // ResolveModule); otherwise sweep every writable region.
+            bool useRange = moduleOnly && HasModule;
+            foreach (var (start, end, perms, _) in Maps())
             {
                 if (perms.Length < 2 || perms[1] != 'w')
                     continue;
-                if (moduleOnly && !string.IsNullOrEmpty(_exePath) && path != _exePath)
-                    continue;
-                if (end > start)
+                if (useRange)
+                {
+                    ulong a = Math.Max(start, ModuleBase);
+                    ulong b = Math.Min(end, ModuleEnd);
+                    if (b > a)
+                        yield return (a, b - a);
+                }
+                else if (end > start)
+                {
                     yield return (start, end - start);
+                }
             }
         }
 

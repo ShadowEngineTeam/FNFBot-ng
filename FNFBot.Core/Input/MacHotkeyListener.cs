@@ -25,7 +25,7 @@ namespace FNFBot.Core.Input
         private const ushort kVK_F1 = 0x7A; // 122
         private const ushort kVK_F2 = 0x78; // 120
         private const ushort kVK_F3 = 0x63; // 99
-        private const ushort kVK_F4 = 0x76; // 118 (was wrongly 96 = F5)
+        private const ushort kVK_F4 = 0x76; // 118
 
         private static readonly (ushort Key, BotHotkey Action)[] FKeys = {
             (kVK_F1, BotHotkey.Rewind),

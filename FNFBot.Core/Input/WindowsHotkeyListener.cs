@@ -6,9 +6,8 @@ using System.Threading;
 namespace FNFBot.Core.Input
 {
     /// <summary>
-    /// Detects F1-F4 by polling GetAsyncKeyState on a background thread. Deliberately not a
-    /// WH_KEYBOARD_LL hook; a global low-level hook sits in the system input path and would
-    /// lag the game whenever the bot is busy.
+    /// Detects F1-F4 by polling GetAsyncKeyState on a background thread (rather than a
+    /// global keyboard hook, which would add input latency).
     /// </summary>
     [SupportedOSPlatform("windows")]
     public sealed class WindowsHotkeyListener : IHotkeyListener
