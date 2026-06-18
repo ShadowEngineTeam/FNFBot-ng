@@ -20,12 +20,18 @@ namespace FNFBot.Core.Input
 
         private const int kCGEventSourceStateHIDSystemState = 1;
 
-        // macOS virtual key codes for F1..F4.
+        // Carbon virtual key codes (HIToolbox/Events.h). The values are non-sequential
+        // (F4 is 0x76, F5 is 0x60), so they are named to avoid mix-ups.
+        private const ushort kVK_F1 = 0x7A; // 122
+        private const ushort kVK_F2 = 0x78; // 120
+        private const ushort kVK_F3 = 0x63; // 99
+        private const ushort kVK_F4 = 0x76; // 118 (was wrongly 96 = F5)
+
         private static readonly (ushort Key, BotHotkey Action)[] FKeys = {
-            (122, BotHotkey.Rewind),
-            (120, BotHotkey.PlayPause),
-            (99,  BotHotkey.FastForward),
-            (96,  BotHotkey.CloseChart)
+            (kVK_F1, BotHotkey.Rewind),
+            (kVK_F2, BotHotkey.PlayPause),
+            (kVK_F3, BotHotkey.FastForward),
+            (kVK_F4, BotHotkey.CloseChart)
         };
 
         private Thread _thread;

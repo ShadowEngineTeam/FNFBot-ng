@@ -4,25 +4,18 @@ using System.Collections.Generic;
 namespace FNFBot.Core.Memory
 {
     /// <summary>
-    /// Finds and follows <c>Conductor.songPosition</c> for engines that keep it as a
-    /// module static (Psych, Shadow, Codename), exposing a smooth play clock.
+    /// Finds and follows <c>Conductor.songPosition</c> for engines that keep it as a module
+    /// static (Psych, Shadow, Codename), exposing a smooth play clock.
     ///
-    /// <para><b>How it locks on.</b> <c>Conductor.songPosition</c> is a Haxe
-    /// <c>static var ... :Float</c>, which HXCPP lays out as a 64-bit double inside the
-    /// main module's writable data. We can't match it by value (zeroed RAM reads as
-    /// 0.0, and the plausible time range matches millions of doubles), so we match it
-    /// by <i>behaviour</i>: take two snapshots of every in-range double in the module's
-    /// writable pages a fixed interval apart and keep only the ones advancing at roughly
-    /// 1&#160;ms per real ms, the signature of a song clock. A handful of confirmations
-    /// pins the address.</para>
+    /// <para>songPosition is a Haxe static Float (a 64-bit double in the module's writable
+    /// data). It can't be matched by value (zeroed RAM is 0.0 and the time range matches
+    /// millions of doubles), so it's matched by behaviour: snapshot every in-range double in
+    /// the module's writable pages twice a fixed interval apart, keep the ones advancing at
+    /// ~1ms/ms, and lock after a few confirmations. A wrong lock is harmless: the bot only
+    /// presses on the negative countdown ramp, which a stray counter never produces.</para>
     ///
-    /// <para><b>Why a wrong lock is harmless.</b> The bot only starts pressing on the
-    /// negative countdown ramp (songPosition climbing from a deep negative toward 0); a
-    /// stray monotonic counter never goes negative, so it never arms play.</para>
-    ///
-    /// <para>This is the shared base; per-engine subclasses (<see cref="PsychSongClock"/>,
-    /// <see cref="CodenameSongClock"/>) only customise the label and process-name match.
-    /// Funkin V-Slice is different (heap singleton) and uses <see cref="VSliceSongClock"/>.</para>
+    /// <para>Shared base; subclasses (<see cref="PsychSongClock"/>, <see cref="CodenameSongClock"/>)
+    /// only set the label and name match. V-Slice's heap singleton uses <see cref="VSliceSongClock"/>.</para>
     /// </summary>
     public class ModuleStaticSongClock : ISongClock
     {
@@ -31,9 +24,17 @@ namespace FNFBot.Core.Memory
         private const double RangeMin = -12_000;
         private const double RangeMax = 1_200_000;
 
-        // Two snapshot reads must be this far apart (ms) to measure a clean slope.
+        // Two snapshot reads must be this far apart (ms) to measure a clean slope. The full
+        // scan reads far more memory per pass (and a Wine/Box64-hosted game is large), so it
+        // tolerates a much wider interval; the slope band still rejects junk.
         private const long MinDtMs = 40;
         private const long MaxDtMs = 600;
+        private const long MaxDtFullMs = 6000;
+
+        // If a module-only scan never locks, widen to a full writable-memory sweep. This
+        // covers engines whose statics live in a .so, and games run through Wine/Box64/FEX
+        // where /proc/<pid>/exe is the loader rather than the game.
+        private const int EscalateAfterCycles = 10;
 
         // A candidate advancing within this slope band (ms moved / ms elapsed) is a
         // clock. Wide enough to tolerate the engine's playbackRate and per-frame lerp.
@@ -61,6 +62,7 @@ namespace FNFBot.Core.Memory
         private readonly Dictionary<ulong, int> _hits = new Dictionary<ulong, int>();
         private readonly HashSet<ulong> _sawNeg = new HashSet<ulong>();
         private int _scanCycles;
+        private bool _fullScan;
 
         public ModuleStaticSongClock(Action<string> log)
         {
@@ -106,6 +108,7 @@ namespace FNFBot.Core.Memory
             _mem?.Dispose();
             _mem = mem;
             ResetScan();
+            _fullScan = false;
             _located = false;
             _addr = 0;
             _value = 0;
@@ -174,7 +177,7 @@ namespace FNFBot.Core.Memory
 
         private void ScanTick()
         {
-            bool moduleOnly = _mem.HasModule;
+            bool moduleOnly = _mem.HasModule && !_fullScan;
             var snap = BuildSnapshot(moduleOnly);
             long now = Now;
 
@@ -184,7 +187,8 @@ namespace FNFBot.Core.Memory
             if (_prevSnap != null)
             {
                 long dt = now - _prevSnapTicks;
-                if (dt >= MinDtMs && dt <= MaxDtMs)
+                long maxDt = moduleOnly ? MaxDtMs : MaxDtFullMs;
+                if (dt >= MinDtMs && dt <= maxDt)
                 {
                     foreach (var kv in snap)
                     {
@@ -202,6 +206,16 @@ namespace FNFBot.Core.Memory
 
                     _scanCycles++;
                     TryLock();
+
+                    // Module-only scan came up empty: widen to all writable memory (a .so
+                    // build, or a game hosted by Wine/Box64/FEX where the module is the loader).
+                    if (!_located && moduleOnly && _scanCycles >= EscalateAfterCycles)
+                    {
+                        _fullScan = true;
+                        _log?.Invoke($"{EngineName}: nothing in the module, widening to a full memory scan (emulated host or split module?).");
+                        ResetScan();
+                        return;
+                    }
                 }
             }
 

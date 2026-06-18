@@ -21,7 +21,14 @@ namespace FNFBot.Core.Input
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                     return new LinuxInputBackend();
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                    return new MacInputBackend();
+                {
+                    var mac = new MacInputBackend();
+                    // Return the backend regardless so it starts working the moment the user
+                    // grants permission, but warn now so a silent no-op is explained.
+                    if (!MacInputBackend.IsTrusted())
+                        LastBackendError = "macOS hasn't granted Accessibility to FNFBot, so key presses are ignored. Enable it under System Settings > Privacy & Security > Accessibility (and Input Monitoring for the F-key hotkeys), then restart the bot.";
+                    return mac;
+                }
                 LastBackendError = "No key-injection backend for this OS.";
             }
             catch (Exception e)

@@ -6,26 +6,17 @@ namespace FNFBot.Core.Memory
 {
     /// <summary>
     /// Finds and follows <c>Conductor.instance.songPosition</c> in Funkin V-Slice, whose
-    /// Conductor is a <b>heap singleton</b> (<c>Conductor._instance</c>, created once and
-    /// never reassigned) rather than a module static.
+    /// Conductor is a heap singleton (<c>Conductor._instance</c>) rather than a module static.
     ///
-    /// <para><b>Anchor-first probing.</b> A blind value-scan of a multi-GB game is slow,
-    /// memory-heavy, and can't tell songPosition from preview timers. Instead this:
-    /// <list type="number">
-    ///   <item><description>scans the small <i>module</i> static data once for pointers that
-    ///   land in the GC heap and point at a real object (its first word is a vtable in
-    ///   readable memory); <c>Conductor._instance</c> is one of these;</description></item>
-    ///   <item><description>each cycle reads <i>through</i> each such static pointer twice, a
-    ///   tightly controlled ~140&#160;ms apart, and keeps the field that advances at ~1&#160;ms/ms.
-    ///   That is the Conductor's <c>songPosition</c>.</description></item>
-    /// </list>
-    /// Reading through the static both passes makes it correct even if the GC relocates the
-    /// object (the engine updates the static), and bounds the work to a few MB regardless of
-    /// game size, fixing the slow/oversized full-memory scan that failed before.</para>
+    /// <para>A blind value-scan of a multi-GB game is slow and can't tell songPosition from
+    /// preview timers, so this probes anchor-first: once, find the module statics that point
+    /// at a real heap object (<c>Conductor._instance</c> is one), then each cycle read through
+    /// those pointers twice ~140ms apart and keep the field advancing at ~1ms/ms. Reading
+    /// through the static stays correct across GC moves and bounds the work to a few MB.</para>
     ///
-    /// <para>Arming/pausing/disarming are handled by <c>BotEngine</c>, identical to the other
-    /// engines: V-Slice's countdown dips to <c>-crochet*5</c> and playback clamps songPosition
-    /// to ≥ ~0, so freeplay previews never arm it.</para>
+    /// <para>Arming/pausing/disarming live in <c>BotEngine</c>, identical to the other engines:
+    /// V-Slice's countdown dips to <c>-crochet*5</c> while playback clamps songPosition to
+    /// roughly 0+, so freeplay previews never arm it.</para>
     /// </summary>
     public sealed class VSliceSongClock : ISongClock
     {

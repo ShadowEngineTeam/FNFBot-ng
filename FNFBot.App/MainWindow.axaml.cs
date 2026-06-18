@@ -134,7 +134,7 @@ namespace FNFBot.App
         {
             if (!ProcessMemory.IsSupported)
             {
-                AppendLog("Attaching to a game is only supported on Windows; use manual F2 elsewhere.");
+                AppendLog("Attaching to a game isn't supported on this OS; use manual F2.");
                 return;
             }
 
@@ -150,9 +150,12 @@ namespace FNFBot.App
 
             var root = new Grid { Margin = new Thickness(12), RowDefinitions = new RowDefinitions("Auto,*,Auto") };
 
+            string hint = OperatingSystem.IsWindows()
+                ? "Pick the running FNF process. The bot finds its Conductor and plays only when a song's countdown starts, following its time (pause / resume / restart). If a game runs elevated, run the bot as administrator."
+                : "Pick the running FNF process. The bot finds its Conductor and plays only when a song's countdown starts, following its time. Reading another process needs root here, so launch the bot with sudo (Linux can instead use: sudo sysctl -w kernel.yama.ptrace_scope=0).";
             root.Children.Add(new TextBlock
             {
-                Text = "Pick the running FNF window. The bot finds its Conductor and plays only when a song's countdown starts, following its time (pause / resume / restart).",
+                Text = hint,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
             });
