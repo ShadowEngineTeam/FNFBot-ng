@@ -92,9 +92,13 @@ namespace FridayNightFunkin
                     metaDoc?.Dispose();
                 }
             }
+            else if (CDevCdcParser.IsCdcRoot(root))
+            {
+                CDevCdcParser.Parse(this, root);
+            }
             else
             {
-                throw new InvalidDataException("No song data found in chart (missing \"song\" or V-Slice format).");
+                throw new InvalidDataException("No song data found in chart (missing \"song\" or V-Slice or CDev format).");
             }
         }
     }

@@ -10,7 +10,7 @@
   <Grid Margin="8" RowDefinitions="Auto,*,180,Auto">
 
     <!-- Header -->
-    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" Margin="0,0,0,6">
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" Margin="0,0,0,6">
       <TextBlock Text="FNFBot" FontSize="22" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
       <TextBlock x:Name="AttachLabel" Grid.Column="1" Text="Not attached (manual F2)" Foreground="#FFB37A"
                  Margin="14,0,8,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -18,8 +18,9 @@
                  Margin="0,0,16,0" VerticalAlignment="Center"/>
       <TextBlock x:Name="OffsetLabel" Grid.Column="3" Text="Offset: 25" Foreground="White"
                  Margin="0,0,8,0" VerticalAlignment="Center"/>
-      <Button Grid.Column="4" x:Name="AttachBtn" Content="Attach Game" Margin="0,0,6,0"/>
-      <Button Grid.Column="5" x:Name="SettingsBtn" Content="Settings" Margin="0,0,0,0"/>
+      <Button Grid.Column="4" x:Name="OppBtn" Content="Mode: Player" Margin="0,0,6,0"/>
+      <Button Grid.Column="5" x:Name="AttachBtn" Content="Attach Game" Margin="0,0,6,0"/>
+      <Button Grid.Column="6" x:Name="SettingsBtn" Content="Settings" Margin="0,0,0,0"/>
     </Grid>
 
     <!-- Note field + console -->

@@ -135,7 +135,7 @@ namespace FNFBot.Core.Memory
         private static readonly ulong MaxUserAddr = IntPtr.Size == 8 ? 0x7FFFFFFFFFFFUL : 0xFFFFFFFFUL;
         private static readonly int MbiSize = IntPtr.Size == 8 ? 48 : 28;
 
-        private IEnumerable<(ulong addr, ulong size, uint state, uint protect)> EnumRegions(ulong start, ulong stop)
+        private IEnumerable<(ulong addr, ulong size, uint state, uint protect, uint type)> EnumRegions(ulong start, ulong stop)
         {
             if (_disposed || _handle == IntPtr.Zero)
                 yield break;
@@ -149,12 +149,14 @@ namespace FNFBot.Core.Memory
 
                 ulong regionBase, regionSize;
                 uint state, protect;
+                uint type;
                 if (IntPtr.Size == 8)
                 {
                     regionBase = BitConverter.ToUInt64(mbi, 0);
                     regionSize = BitConverter.ToUInt64(mbi, 24);
                     state = BitConverter.ToUInt32(mbi, 32);
                     protect = BitConverter.ToUInt32(mbi, 36);
+                    type = BitConverter.ToUInt32(mbi, 40);
                 }
                 else
                 {
@@ -162,11 +164,12 @@ namespace FNFBot.Core.Memory
                     regionSize = BitConverter.ToUInt32(mbi, 12);
                     state = BitConverter.ToUInt32(mbi, 16);
                     protect = BitConverter.ToUInt32(mbi, 20);
+                    type = BitConverter.ToUInt32(mbi, 24);
                 }
 
                 if (regionSize == 0)
                     break;
-                yield return (regionBase, regionSize, state, protect);
+                yield return (regionBase, regionSize, state, protect, type);
 
                 ulong next = regionBase + regionSize;
                 if (next <= cur)
@@ -186,23 +189,30 @@ namespace FNFBot.Core.Memory
 
         public override IEnumerable<(ulong addr, ulong size)> WritableRegions(bool moduleOnly)
         {
-            ulong start = moduleOnly && HasModule ? ModuleBase : 0x10000UL;
-            ulong stop = moduleOnly && HasModule ? ModuleEnd : MaxUserAddr;
+            if (!moduleOnly || !HasModule)
+            {
+                foreach (var (regionBase, regionSize, state, protect, _) in EnumRegions(0x10000UL, MaxUserAddr))
+                {
+                    if (state != MEM_COMMIT || !IsWritable(protect) || IsGuarded(protect))
+                        continue;
+                    yield return (regionBase, regionSize);
+                }
+                yield break;
+            }
 
-            foreach (var (regionBase, regionSize, state, protect) in EnumRegions(start, stop))
+            foreach (var (regionBase, regionSize, state, protect, type) in EnumRegions(0x10000UL, MaxUserAddr))
             {
                 if (state != MEM_COMMIT || !IsWritable(protect) || IsGuarded(protect))
                     continue;
-                ulong a = Math.Max(regionBase, start);
-                ulong end = Math.Min(regionBase + regionSize, stop);
-                if (end > a)
-                    yield return (a, end - a);
+                if (type != MEM_IMAGE)
+                    continue;
+                yield return (regionBase, regionSize);
             }
         }
 
         public override IEnumerable<(ulong addr, ulong size)> ReadableRegions()
         {
-            foreach (var (regionBase, regionSize, state, protect) in EnumRegions(0x10000UL, MaxUserAddr))
+            foreach (var (regionBase, regionSize, state, protect, _) in EnumRegions(0x10000UL, MaxUserAddr))
                 if (state == MEM_COMMIT && IsReadable(protect) && !IsGuarded(protect))
                     yield return (regionBase, regionSize);
         }
@@ -227,6 +237,7 @@ namespace FNFBot.Core.Memory
         private const uint STILL_ACTIVE = 259;
 
         private const uint MEM_COMMIT = 0x1000;
+        private const uint MEM_IMAGE = 0x1000000;
         private const uint PAGE_READONLY = 0x02;
         private const uint PAGE_READWRITE = 0x04;
         private const uint PAGE_WRITECOPY = 0x08;

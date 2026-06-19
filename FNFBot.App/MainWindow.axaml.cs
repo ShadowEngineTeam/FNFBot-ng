@@ -34,6 +34,7 @@ namespace FNFBot.App
             RenderCheck.IsCheckedChanged += (_, _) => Field.RenderEnabled = RenderCheck.IsChecked == true;
             SettingsBtn.Click += async (_, _) => await ShowSettingsDialog();
             AttachBtn.Click += async (_, _) => await ShowAttachDialog();
+            OppBtn.Click += (_, _) => ToggleOpponent();
 
             Closing += (_, _) => _engine.Dispose();
             // Global hotkey listener (WindowsHotkeyListener) already handles F1-F4 via
@@ -76,6 +77,18 @@ namespace FNFBot.App
                 AttachLabel.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xE0, 0x6A));
             }
         }
+
+        private void ToggleOpponent()
+        {
+            _engine.OpponentMode = !_engine.OpponentMode;
+            OppBtn.Content = _engine.OpponentMode ? "Mode: Opponent" : "Mode: Player";
+            AppendLog(_engine.OpponentMode ? "Opponent mode: playing opponent notes." : "Player mode: playing player notes.");
+            if (!string.IsNullOrEmpty(_chartPath))
+                _engine.Load(_chartPath, _chartDifficulty);
+        }
+
+        private string _chartPath;
+        private string _chartDifficulty;
 
         private void AppendLog(string text)
         {
@@ -126,7 +139,9 @@ namespace FNFBot.App
             if (SongTree.SelectedItem is TreeViewItem tvi && tvi.Tag is ChartEntry chart)
             {
                 AppendLog("Selecting " + chart.Label);
-                _engine.Load(chart.Path, chart.Difficulty);
+                _chartPath = chart.Path;
+                _chartDifficulty = chart.Difficulty;
+                _engine.Load(_chartPath, _chartDifficulty);
             }
         }
 
@@ -141,28 +156,31 @@ namespace FNFBot.App
             var win = new Window
             {
                 Title = "Attach Game",
-                Width = 460,
-                Height = 420,
+                Width = 480,
+                Height = 520,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Icon = Icon,
                 CanResize = false
             };
 
-            var root = new Grid { Margin = new Thickness(12), RowDefinitions = new RowDefinitions("Auto,*,Auto") };
+            var root = new Grid { Margin = new Thickness(12), RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto") };
 
-            string hint = OperatingSystem.IsWindows()
-                ? "Pick the running FNF process. The bot finds its Conductor and plays only when a song's countdown starts, following its time (pause / resume / restart). If a game runs elevated, run the bot as administrator."
-                : "Pick the running FNF process. The bot finds its Conductor and plays only when a song's countdown starts, following its time. Reading another process needs root here, so launch the bot with sudo (Linux can instead use: sudo sysctl -w kernel.yama.ptrace_scope=0).";
             root.Children.Add(new TextBlock
             {
-                Text = hint,
+                Text = "Pick the running FNF process and select its engine type. The bot finds Conductor.songPosition and plays only when a song's countdown starts.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
             });
 
-            var list = new ListBox { Margin = new Thickness(0, 0, 0, 8) };
+            var list = new ListBox { Margin = new Thickness(0, 0, 0, 6) };
             Grid.SetRow(list, 1);
             root.Children.Add(list);
+
+            var engineBox = new ComboBox { Margin = new Thickness(0, 0, 0, 8) };
+            Grid.SetRow(engineBox, 2);
+            engineBox.ItemsSource = new[] { "Auto", "Psych / Shadow", "Codename", "Kade", "NightmareVision", "Troll", "V-Slice", "CDev Engine", "Generic" };
+            engineBox.SelectedIndex = 0;
+            root.Children.Add(engineBox);
 
             void Populate()
             {
@@ -172,7 +190,7 @@ namespace FNFBot.App
             }
 
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 6 };
-            Grid.SetRow(buttons, 2);
+            Grid.SetRow(buttons, 3);
             var refreshBtn = new Button { Content = "Refresh" };
             var detachBtn = new Button { Content = "Detach" };
             var attachBtn = new Button { Content = "Attach" };
@@ -185,11 +203,24 @@ namespace FNFBot.App
 
             win.Content = root;
 
+            EngineType MapEngine(int idx) => idx switch
+            {
+                1 => EngineType.Psych,
+                2 => EngineType.Codename,
+                3 => EngineType.Kade,
+                4 => EngineType.NightmareVision,
+                5 => EngineType.Troll,
+                6 => EngineType.VSlice,
+                7 => EngineType.CDev,
+                8 => EngineType.Generic,
+                _ => EngineType.Auto
+            };
+
             void DoAttach()
             {
                 if (list.SelectedItem is ProcessPick pick)
                 {
-                    _engine.AttachTo(pick.Pid, pick.Name);
+                    _engine.AttachTo(pick.Pid, pick.Name, MapEngine(engineBox.SelectedIndex));
                     win.Close();
                 }
                 else

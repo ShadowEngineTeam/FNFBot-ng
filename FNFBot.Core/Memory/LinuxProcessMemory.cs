@@ -35,6 +35,14 @@ namespace FNFBot.Core.Memory
 
             var mem = new LinuxProcessMemory(pid, name, exe);
             mem.DetectBitness(log);
+
+            string loaderMsg = LoaderHint(exe);
+            if (loaderMsg != null)
+            {
+                log?.Invoke(loaderMsg);
+                return null;
+            }
+
             mem.ResolveModule(log);
 
             if (!mem.PermissionOk(out ulong probe))
@@ -75,15 +83,6 @@ namespace FNFBot.Core.Memory
         {
             if (string.IsNullOrEmpty(_exePath))
                 return;
-
-            // When the game runs through Wine / Box64 / FEX / QEMU, /proc/<pid>/exe is the
-            // loader, not the game. The game's memory still lives inside this process, so leave
-            // the module range unset; the song clock then sweeps all writable memory.
-            if (IsLoaderExe(_exePath))
-            {
-                log?.Invoke($"{Name} runs via {Path.GetFileName(_exePath)} (Wine/Box64/FEX/QEMU); the game's memory is inside it, so all writable memory is scanned.");
-                return;
-            }
 
             ulong min = ulong.MaxValue, max = 0;
             foreach (var (start, end, _, path) in Maps())
@@ -131,15 +130,29 @@ namespace FNFBot.Core.Memory
             }
         }
 
-        /// <summary>True if the executable is a compatibility/emulation loader (Wine, Box64,
-        /// FEX, QEMU, ...), meaning the real game lives inside this process rather than being
-        /// its main module.</summary>
-        private static bool IsLoaderExe(string exePath)
+        /// <summary>
+        /// Returns a hint string if the target runs through a compatibility/emulation layer,
+        /// or null if it's a native executable.  Called before attach to give the user a
+        /// clear message instead of silently falling back to a full-memory sweep.
+        /// </summary>
+        private static string LoaderHint(string exePath)
         {
-            string n = (Path.GetFileName(exePath) ?? "").ToLowerInvariant();
-            return n.Contains("wine") || n.Contains("box64") || n.Contains("box86")
-                || n.Contains("fex") || n.Contains("qemu") || n.Contains("hangover")
-                || n.Contains("muvm") || n.Contains("preloader");
+            if (string.IsNullOrEmpty(exePath))
+                return null;
+            string n = Path.GetFileName(exePath).ToLowerInvariant();
+            if (n.Contains("wine") || n.Contains("hangover"))
+                return $"The process runs through {Path.GetFileName(exePath)} (Wine). Attaching to Wine-hosted games isn't supported. Use the Windows-native version of FNFBot matching the process architecture.";
+            if (n.Contains("box64"))
+                return $"The process runs through Box64 (x86_64 emulation). Attaching to emulated processes isn't supported. Use the x86_64 version of FNFBot matching the process architecture.";
+            if (n.Contains("box86"))
+                return $"The process runs through Box86 (x86 emulation). Attaching to emulated processes isn't supported. Use the x86 (32-bit) version of FNFBot matching the process architecture.";
+            if (n.Contains("qemu"))
+                return $"The process runs through QEMU. Attaching to emulated processes isn't supported. Use the version of FNFBot matching the emulated process's architecture.";
+            if (n.Contains("fex"))
+                return $"The process runs through FEX (x86 emulation on ARM). Attaching to emulated processes isn't supported. Use the x86 version of FNFBot matching the process architecture.";
+            if (n.Contains("muvm") || n.Contains("preloader"))
+                return $"The process runs through a compatibility layer ({Path.GetFileName(exePath)}). Attaching to emulated processes isn't supported. Use the version of FNFBot matching the process architecture.";
+            return null;
         }
 
         private bool PermissionOk(out ulong probeAddr)

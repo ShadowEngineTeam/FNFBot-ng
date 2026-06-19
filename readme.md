@@ -10,8 +10,9 @@ FNFBot reads chart `.json` files directly. It supports:
 - **Psych Engine** (psych_legacy and psych_v1)
 - **Shadow Engine**
 - **Troll Engine**
-- ~~**Nightmare Vision**~~ (UNTESTED)
+- **Nightmare Vision**
 - **Codename Engine**
+- **CDev Engine**
 - **Kade Engine**
 
 ## Requirements
@@ -72,7 +73,7 @@ Reading another process's memory needs elevated rights:
 
 Attach covers the engines that keep `songPosition` as a module static (Psych, Shadow, Codename, Kade, Nightmare Vision, Troll, and unrecognised forks via a generic fallback). **Funkin V-Slice** and **macOS** attach are experimental. When attach is unavailable the manual **F2** workflow always works. 32-bit builds (Windows x86, Linux arm) can only attach to 32-bit games.
 
-Games run through a compatibility or translation layer also work, because the game's memory lives inside the host process: the bot scans all of its writable memory for the Conductor (a bit slower to lock). On Linux it auto-detects the loader (**Wine, Box64, FEX, QEMU**); on macOS it always full-scans, so **Wine / CrossOver** and **Rosetta 2** are covered too. Pick the game's process in the attach list.
+Games run through a compatibility or translation layer (**Wine, Box64/Box86, QEMU, FEX, MuVM**) are **rejected at attach** with a clear message. The emulated process shares its memory with the loader binary, not the game binary, so the module scanner cannot locate the game's static variables. Instead, use a build of FNFBot that matches the game's native architecture (e.g. the x86_64 build for Box64-hosted games, or the Windows build for Wine). The **F2** manual workflow always works as a fallback regardless of process architecture.
 
 ### Hotkeys
 

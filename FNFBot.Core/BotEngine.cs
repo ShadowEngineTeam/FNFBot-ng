@@ -9,6 +9,19 @@ using FridayNightFunkin;
 
 namespace FNFBot.Core
 {
+    public enum EngineType
+    {
+        Auto,
+        Psych,
+        Codename,
+        Kade,
+        NightmareVision,
+        Troll,
+        VSlice,
+        CDev,
+        Generic
+    }
+
     /// <summary>
     /// The platform-independent bot: parses a chart, then on F2 plays it by injecting key
     /// presses in time with its own stopwatch. Reports via events and reads nothing from any
@@ -53,6 +66,8 @@ namespace FNFBot.Core
         private volatile bool _shutdown;
         private volatile int _attachPid;       // 0 = detached
         private volatile string _attachName;
+        private int _lastAttachPid;
+        private EngineType _engineType = EngineType.Auto;
 
         private bool _memArmed;        // countdown confirmed -> bot may press
         private bool _cdSawDeep;       // saw the deep negative dip of a real countdown
@@ -65,6 +80,7 @@ namespace FNFBot.Core
         public double Bpm { get; private set; }
         public double Speed { get; private set; } = 1;
         public double SectionLenMs { get; private set; } = 1;
+        public bool OpponentMode { get; set; }
 
         public IReadOnlyList<FNFSong.FNFNote> Notes => _notes;
 
@@ -158,14 +174,33 @@ namespace FNFBot.Core
             var notes = new List<FNFSong.FNFNote>();
             foreach (var sec in song.Sections)
                 foreach (var n in sec.Notes)
-                    if ((int)n.Type < 4) // normalized: player notes are 0-3
+                {
+                    if (OpponentMode ? (int)n.Type >= 4 : (int)n.Type < 4)
                         notes.Add(n);
+                }
             notes.Sort((a, b) => a.Time.CompareTo(b.Time));
             _notes = notes;
 
             _noteJitter = new double[_notes.Count];
-            for (int i = 0; i < _notes.Count; i++)
-                _noteJitter[i] = _notes[i].Length > 0 ? 0 : ComputeJitter();
+            int j = 0;
+            while (j < _notes.Count)
+            {
+                if (_notes[j].Length > 0)
+                {
+                    _noteJitter[j] = 0;
+                    j++;
+                    continue;
+                }
+                double jitter = ComputeJitter();
+                double t0 = _notes[j].Time;
+                int end = j;
+                while (end < _notes.Count && _notes[end].Time - t0 < 5)
+                {
+                    _noteJitter[end] = _notes[end].Length > 0 ? 0 : jitter;
+                    end++;
+                }
+                j = end;
+            }
 
             double crochet = Bpm > 0 ? 60000.0 / Bpm : 600.0;
             SectionLenMs = crochet * 4.0;
@@ -417,14 +452,23 @@ namespace FNFBot.Core
         public static List<ProcessPick> ListProcesses() => ProcessMemory.ListProcesses();
 
         /// <summary>Attach to a process; the watcher thread opens it and starts scanning.</summary>
-        public void AttachTo(int pid, string name)
+        public void AttachTo(int pid, string name, EngineType engineType = EngineType.Auto)
         {
             if (pid <= 0)
                 return;
+            if (_attachPid != 0 && pid != _attachPid)
+            {
+                // Switching to a different process while still attached: mark for
+                // detachment so MemoryWatch picks it up before opening the new one.
+                _attachPid = 0;
+                _lastAttachPid = 0;
+                _memArmed = false;
+                _cdSawDeep = false;
+                _memWasRunning = false;
+                ReleaseAllHolds();
+            }
             _attachName = name;
-            _memArmed = false;
-            _cdSawDeep = false;
-            _memWasRunning = false;
+            _engineType = engineType;
             _attachPid = pid;
             Emit($"Attaching to {name} (pid {pid})... start a song in-game and the bot follows its countdown.");
             MemoryStatusChanged?.Invoke();
@@ -435,6 +479,7 @@ namespace FNFBot.Core
             if (_attachPid == 0)
                 return;
             _attachPid = 0;
+            _lastAttachPid = 0;
             _memArmed = false;
             _cdSawDeep = false;
             _memWasRunning = false;
@@ -443,49 +488,75 @@ namespace FNFBot.Core
             MemoryStatusChanged?.Invoke();
         }
 
-        /// <summary>
-        /// Picks the songPosition reader for the attached engine by process name. Funkin
-        /// V-Slice keeps its Conductor on the heap (pointer-chain clock); every other engine
-        /// here (Codename, Kade, NightmareVision, Troll, Psych/Shadow) keeps songPosition as
-        /// a module static and shares <see cref="ModuleStaticSongClock"/>; the subclasses
-        /// only change the log label. An unrecognised name falls back to the generic
-        /// module-static clock, which works for any Psych-style engine no matter how its exe
-        /// is named, so naming precision here is purely cosmetic.
-        /// </summary>
-        private ISongClock SelectClock(string name)
+        private ISongClock CreateClock()
         {
-            if (CodenameSongClock.Matches(name))
+            switch (_engineType)
             {
-                Emit("Detected Codename Engine.");
-                return new CodenameSongClock(Emit);
+                case EngineType.Psych:
+                    Emit("Using Psych/Shadow Engine clock.");
+                    return new PsychSongClock(Emit);
+                case EngineType.Codename:
+                    Emit("Using Codename Engine clock.");
+                    return new CodenameSongClock(Emit);
+                case EngineType.Kade:
+                    Emit("Using Kade Engine clock.");
+                    return new KadeSongClock(Emit);
+                case EngineType.NightmareVision:
+                    Emit("Using NightmareVision clock.");
+                    return new NightmareVisionSongClock(Emit);
+                case EngineType.Troll:
+                    Emit("Using Troll Engine clock.");
+                    return new TrollSongClock(Emit);
+                case EngineType.VSlice:
+                    Emit("Using Funkin V-Slice clock (heap pointer-chain).");
+                    return new VSliceSongClock(Emit);
+                case EngineType.CDev:
+                    Emit("Using CDev Engine clock.");
+                    return new CDevSongClock(Emit);
+                case EngineType.Generic:
+                    Emit("Using generic module-static clock.");
+                    return new ModuleStaticSongClock(Emit);
+                default:
+                    // Auto: pick by process name.
+                    string name = _attachName ?? "";
+                    if (CodenameSongClock.Matches(name))
+                    {
+                        Emit("Detected Codename Engine.");
+                        return new CodenameSongClock(Emit);
+                    }
+                    if (KadeSongClock.Matches(name))
+                    {
+                        Emit("Detected Kade Engine.");
+                        return new KadeSongClock(Emit);
+                    }
+                    if (NightmareVisionSongClock.Matches(name))
+                    {
+                        Emit("Detected NightmareVision.");
+                        return new NightmareVisionSongClock(Emit);
+                    }
+                    if (TrollSongClock.Matches(name))
+                    {
+                        Emit("Detected Troll Engine.");
+                        return new TrollSongClock(Emit);
+                    }
+                    if (VSliceSongClock.Matches(name))
+                    {
+                        Emit("Detected Funkin (V-Slice), using the heap pointer-chain clock.");
+                        return new VSliceSongClock(Emit);
+                    }
+                    if (CDevSongClock.Matches(name))
+                    {
+                        Emit("Detected CDev Engine.");
+                        return new CDevSongClock(Emit);
+                    }
+                    if (PsychSongClock.Matches(name))
+                    {
+                        Emit("Detected Psych/Shadow Engine.");
+                        return new PsychSongClock(Emit);
+                    }
+                    Emit("Unrecognised engine name, using the generic module-static clock.");
+                    return new ModuleStaticSongClock(Emit);
             }
-            if (KadeSongClock.Matches(name))
-            {
-                Emit("Detected Kade Engine.");
-                return new KadeSongClock(Emit);
-            }
-            if (NightmareVisionSongClock.Matches(name))
-            {
-                Emit("Detected NightmareVision.");
-                return new NightmareVisionSongClock(Emit);
-            }
-            if (TrollSongClock.Matches(name))
-            {
-                Emit("Detected Troll Engine.");
-                return new TrollSongClock(Emit);
-            }
-            if (VSliceSongClock.Matches(name))
-            {
-                Emit("Detected Funkin (V-Slice), using the heap pointer-chain clock.");
-                return new VSliceSongClock(Emit);
-            }
-            if (PsychSongClock.Matches(name))
-            {
-                Emit("Detected Psych/Shadow Engine.");
-                return new PsychSongClock(Emit);
-            }
-            Emit("Unrecognised engine name, using the generic module-static clock.");
-            return new ModuleStaticSongClock(Emit);
         }
 
         private void MemoryWatch()
@@ -495,6 +566,15 @@ namespace FNFBot.Core
                 try
                 {
                     int pid = _attachPid;
+
+                    // Detect pid change: detach the old process when user picks a different one.
+                    if (pid != _lastAttachPid && _mem.HasProcess)
+                    {
+                        _mem.Detach();
+                        _lastAttachPid = pid;
+                        MemoryStatusChanged?.Invoke();
+                    }
+                    _lastAttachPid = pid;
 
                     if (pid == 0)
                     {
@@ -513,12 +593,13 @@ namespace FNFBot.Core
                         if (proc == null)
                         {
                             _attachPid = 0;
+                            _lastAttachPid = 0;
                             MemoryStatusChanged?.Invoke();
                             Thread.Sleep(200);
                             continue;
                         }
                         _attachName = proc.Name;
-                        _mem = SelectClock(proc.Name);
+                        _mem = CreateClock();
                         _mem.Attach(proc);
                         Emit($"Attached to {proc.Name} (pid {pid}). Scanning for Conductor.songPosition...");
                         MemoryStatusChanged?.Invoke();

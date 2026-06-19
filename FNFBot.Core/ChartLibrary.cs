@@ -86,15 +86,24 @@ namespace FNFBot.Core
             foreach (string songDir in Directory.GetDirectories(dataRoot))
             {
                 string chartsDir = Path.Combine(songDir, "charts");
-                bool isCodename = Directory.Exists(chartsDir);
+                string dataDir = Path.Combine(songDir, "data");
+                string scanDir;
+                if (Directory.Exists(chartsDir))
+                    scanDir = chartsDir;
+                else if (Directory.Exists(dataDir) && Directory.GetFiles(dataDir, "*.json").Length > 0)
+                    scanDir = dataDir;
+                else
+                    scanDir = songDir;
 
-                string[] charts = isCodename
-                    ? Directory.GetFiles(chartsDir, "*.json").Where(IsChartJson).ToArray()
-                    : Directory.GetFiles(songDir, "*.json")
+                string[] jsonCharts = Directory.GetFiles(scanDir, "*.json")
                         .Where(f => !Path.GetFileName(f).StartsWith("events", StringComparison.OrdinalIgnoreCase))
                         .Where(f => Path.GetFileName(f).IndexOf("-metadata", StringComparison.OrdinalIgnoreCase) < 0)
                         .Where(IsChartJson)
                         .ToArray();
+                string[] cdcCharts = Directory.GetFiles(scanDir, "*.cdc")
+                        .Where(IsCdcChart)
+                        .ToArray();
+                string[] charts = jsonCharts.Concat(cdcCharts).ToArray();
 
                 if (charts.Length == 0)
                     continue;
@@ -121,6 +130,17 @@ namespace FNFBot.Core
                 if (song.Charts.Count > 0)
                     songs.Add(song);
             }
+        }
+
+        private static bool IsCdcChart(string path)
+        {
+            try
+            {
+                using var doc = ChartUtils.LoadJson(path);
+                var root = doc.RootElement;
+                return CDevCdcParser.IsCdcRoot(root) && CDevCdcParser.HasCdcNotes(root);
+            }
+            catch { return false; }
         }
 
         private static bool IsChartJson(string path)
