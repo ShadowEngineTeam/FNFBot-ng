@@ -36,7 +36,7 @@ namespace FNFBot.Core
 
         private List<FNFSong.FNFNote> _notes = new List<FNFSong.FNFNote>();
         private double[] _noteJitter = Array.Empty<double>();
-        private readonly double[] _holdTimes = new double[4];
+        private double[] _holdTimes = Array.Empty<double>();
         private readonly Stopwatch _watch = new Stopwatch();
 
         private Thread _thread;
@@ -171,15 +171,24 @@ namespace FNFBot.Core
             Bpm = song.Bpm;
             Speed = song.Speed;
 
+            int keyCount = song.KeyCount;
+            if (keyCount < 1) keyCount = 4;
+
+            // Ensure key names match the chart's key count.
+            if (Settings.KeyNames == null || Settings.KeyNames.Length != keyCount)
+                Settings.KeyNames = Input.KeyMap.DefaultNames(keyCount);
+            ApplyKeyMapping();
+
             var notes = new List<FNFSong.FNFNote>();
             foreach (var sec in song.Sections)
                 foreach (var n in sec.Notes)
                 {
-                    if (OpponentMode ? (int)n.Type >= 4 : (int)n.Type < 4)
+                    if (OpponentMode ? !n.IsPlayer : n.IsPlayer)
                         notes.Add(n);
                 }
             notes.Sort((a, b) => a.Time.CompareTo(b.Time));
             _notes = notes;
+            _holdTimes = new double[keyCount];
 
             _noteJitter = new double[_notes.Count];
             int j = 0;
@@ -438,7 +447,7 @@ namespace FNFBot.Core
                     break; // sorted: nothing further can already cover t
                 if (n.Length <= 0 || n.Time + n.Length <= t)
                     continue;
-                int dir = (int)n.Type % 4;
+                int dir = n.Lane;
                 if (_holdTimes[dir] != 0)
                     _input.KeyUp(dir);
                 _input.KeyDown(dir);
@@ -644,7 +653,7 @@ namespace FNFBot.Core
 
         private void HandleNote(FNFSong.FNFNote n, double now, double jitter)
         {
-            int dir = (int)n.Type % 4;
+            int dir = n.Lane;
             bool shouldHold = n.Length > 0;
 
             if (Settings.AutoFail && !shouldHold && _rnd.Next(100) < 10)
@@ -759,6 +768,14 @@ namespace FNFBot.Core
         {
             Emit(msg);
             ApplySettings();
+        }
+
+        /// <summary>
+        /// Push the current key name mapping from settings to the input backend.
+        /// </summary>
+        public void ApplyKeyMapping()
+        {
+            _input.SetKeyCodes(KeyMap.ToPlatformCodes(Settings.KeyNames));
         }
 
         public void Dispose()

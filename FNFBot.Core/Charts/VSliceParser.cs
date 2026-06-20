@@ -130,11 +130,24 @@ namespace FridayNightFunkin
             if (chartRoot.TryGetProperty("notes", out var notes) && notes.TryGetProperty(difficulty, out var diffNotes) && diffNotes.ValueKind == JsonValueKind.Array)
             {
                 var sorted = new List<(double time, double length, int lane)>();
+                int maxLane = 0;
                 foreach (var n in diffNotes.EnumerateArray())
                 {
-                    sorted.Add((ChartUtils.GetDouble(n, "t", 0), ChartUtils.GetDouble(n, "l", 0), (int)ChartUtils.GetDouble(n, "d", 0)));
+                    int lane = (int)ChartUtils.GetDouble(n, "d", 0);
+                    sorted.Add((ChartUtils.GetDouble(n, "t", 0), ChartUtils.GetDouble(n, "l", 0), lane));
+                    if (lane > maxLane) maxLane = lane;
                 }
                 sorted.Sort((a, b) => a.time.CompareTo(b.time));
+
+                // Infer key count: half of total unique lanes, or use chart metadata.
+                int kc = song.KeyCount;
+                if (kc <= 0 || kc == 4)
+                {
+                    int uniqueLanes = maxLane + 1;
+                    kc = uniqueLanes > 8 ? uniqueLanes / 2 : 4;
+                    if (kc < 1) kc = 4;
+                }
+                song.KeyCount = kc;
 
                 if (sorted.Count > 0)
                 {
@@ -150,22 +163,17 @@ namespace FridayNightFunkin
                         while (idx < sorted.Count && sorted[idx].time < end)
                         {
                             var (time, length, lane) = sorted[idx];
-                            int dir = lane % 4;
-                            bool isPlayer = lane < 4;
                             secNotes.Add(new FNFSong.FNFNote
                             {
                                 Time = time,
                                 Length = length,
-                                Type = (FNFSong.NoteType)(isPlayer ? dir : dir + 4)
+                                Lane = lane % kc,
+                                IsPlayer = lane < kc
                             });
                             idx++;
                         }
 
-                        song.Sections.Add(new FNFSong.FNFSection
-                        {
-                            MustHitSection = true,
-                            Notes = secNotes
-                        });
+                        song.Sections.Add(new FNFSong.FNFSection { Notes = secNotes });
                     }
                 }
             }

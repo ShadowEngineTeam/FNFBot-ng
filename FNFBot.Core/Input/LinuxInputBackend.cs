@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
@@ -40,9 +41,7 @@ namespace FNFBot.Core.Input
         private const ushort EV_KEY = 0x01;
         private const ushort SYN_REPORT = 0x00;
 
-        // Linux input key codes for the arrows, indexed by direction (0=L,1=D,2=U,3=R).
-        private static readonly ushort[] ArrowKeys = { 105, 108, 103, 106 };
-
+        private ushort[] _keys = { 105, 108, 103, 106 };
         private int _fd = -1;
 
         public LinuxInputBackend()
@@ -53,8 +52,7 @@ namespace FNFBot.Core.Input
                     "Cannot open /dev/uinput (permission denied?). Add your user to the 'input' group or add a udev rule.");
 
             ioctl_int(_fd, UI_SET_EVBIT, EV_KEY);
-            foreach (ushort key in ArrowKeys)
-                ioctl_int(_fd, UI_SET_KEYBIT, key);
+            RegisterAllKeys();
 
             // Legacy uinput_user_dev (1116 bytes on x86_64) + UI_DEV_CREATE.
             var dev = new byte[1116];
@@ -74,8 +72,15 @@ namespace FNFBot.Core.Input
             }
         }
 
-        public void KeyDown(int direction) => SendKey(ArrowKeys[direction], 1);
-        public void KeyUp(int direction) => SendKey(ArrowKeys[direction], 0);
+        public void SetKeyCodes(int[] codes)
+        {
+            _keys = new ushort[codes.Length];
+            for (int i = 0; i < codes.Length; i++)
+                _keys[i] = (ushort)(codes[i] & 0xFFFF);
+        }
+
+        public void KeyDown(int direction) => SendKey(_keys[direction], 1);
+        public void KeyUp(int direction) => SendKey(_keys[direction], 0);
 
         // struct input_event: timeval (2 word-sized longs) + type(u16) + code(u16) + value(s32).
         // 24 bytes on 64-bit, 16 on 32-bit.
@@ -97,6 +102,14 @@ namespace FNFBot.Core.Input
             BitConverter.GetBytes(type).CopyTo(buf, off + Tv);
             BitConverter.GetBytes(code).CopyTo(buf, off + Tv + 2);
             BitConverter.GetBytes(value).CopyTo(buf, off + Tv + 4);
+        }
+
+        private void RegisterAllKeys()
+        {
+            // Register all potentially needed keys up front.
+            var all = new HashSet<ushort>(KeyMap.ToLinuxEv(KeyMap.DefaultNames(9)));
+            foreach (ushort k in all)
+                ioctl_int(_fd, UI_SET_KEYBIT, k);
         }
 
         public void Dispose()

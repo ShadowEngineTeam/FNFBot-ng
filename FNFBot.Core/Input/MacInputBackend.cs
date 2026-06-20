@@ -30,12 +30,7 @@ namespace FNFBot.Core.Input
 
         private const uint kCGHIDEventTap = 0;
 
-        // Carbon virtual key codes (HIToolbox/Events.h), indexed by direction (0=L,1=D,2=U,3=R).
-        private const ushort kVK_LeftArrow = 0x7B;  // 123
-        private const ushort kVK_DownArrow = 0x7D;  // 125
-        private const ushort kVK_UpArrow = 0x7E;    // 126
-        private const ushort kVK_RightArrow = 0x7C; // 124
-        private static readonly ushort[] ArrowKeys = { kVK_LeftArrow, kVK_DownArrow, kVK_UpArrow, kVK_RightArrow };
+        private ushort[] _keys = { 0x7B, 0x7D, 0x7E, 0x7C };
 
         /// <summary>
         /// Whether this app is trusted for Accessibility. macOS silently drops synthetic key
@@ -44,11 +39,18 @@ namespace FNFBot.Core.Input
         public static bool IsTrusted()
         {
             try { return AXIsProcessTrusted(); }
-            catch { return true; } // framework/symbol unavailable: don't false-alarm
+            catch { return true; }
         }
 
-        public void KeyDown(int direction) => Post(ArrowKeys[direction], true);
-        public void KeyUp(int direction) => Post(ArrowKeys[direction], false);
+        public void SetKeyCodes(int[] codes)
+        {
+            _keys = new ushort[codes.Length];
+            for (int i = 0; i < codes.Length; i++)
+                _keys[i] = (ushort)(codes[i] & 0xFFFF);
+        }
+
+        public void KeyDown(int direction) => Post(_keys[direction], true);
+        public void KeyUp(int direction) => Post(_keys[direction], false);
 
         private static void Post(ushort vk, bool down)
         {

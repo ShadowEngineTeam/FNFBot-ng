@@ -6,29 +6,19 @@ namespace FridayNightFunkin
 {
     public class FNFSong
     {
-        public enum NoteType
-        {
-            Left = 0,
-            Down = 1,
-            Up = 2,
-            Right = 3,
-            RLeft = 4,
-            RDown = 5,
-            RUp = 6,
-            RRight = 7
-        }
-
         public class FNFNote
         {
             public double Time { get; set; }
             public double Length { get; set; }
-            public NoteType Type { get; set; }
+            /// <summary>Local lane index within the strum line (0 .. KeyCount-1).</summary>
+            public int Lane { get; set; }
+            /// <summary>True when this note belongs to the player's strum line.</summary>
+            public bool IsPlayer { get; set; }
         }
 
         public class FNFSection
         {
             public List<FNFNote> Notes { get; set; } = new List<FNFNote>();
-            public bool MustHitSection { get; set; } = true;
         }
 
         public double Bpm { get; set; }
@@ -36,6 +26,7 @@ namespace FridayNightFunkin
         public double Speed { get; set; } = 1;
         public string Format { get; set; } = "legacy";
         public string Difficulty { get; set; } = "";
+        public int KeyCount { get; set; } = 4;
         public List<FNFSection> Sections { get; set; } = new List<FNFSection>();
 
         public FNFSong(string path) : this(path, null) { }

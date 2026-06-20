@@ -5,8 +5,8 @@ using System.Runtime.Versioning;
 namespace FNFBot.Core.Input
 {
     /// <summary>
-    /// Windows key injection via SendInput. HaxeFlixel/Lime games identify keys by hardware
-    /// SCANCODE rather than virtual-key code, so we inject the real extended arrow scancodes.
+    /// Windows key injection via SendInput. Uses key names from <see cref="KeyMap"/> to
+    /// resolve scancodes, so the user can rebind via the settings UI.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public sealed class WindowsInputBackend : IInputBackend
@@ -59,15 +59,27 @@ namespace FNFBot.Core.Input
         private const uint KEYEVENTF_KEYUP = 0x0002;
         private const uint KEYEVENTF_SCANCODE = 0x0008;
 
-        // Extended-key scancodes for the arrows, indexed by direction (0=L,1=D,2=U,3=R).
-        private static readonly ushort[] ArrowScan = { 0x4B, 0x50, 0x48, 0x4D };
+        private ushort[] _scan = { 0x4B, 0x50, 0x48, 0x4D };
+        private bool[] _ext = { true, true, true, true };
 
-        public void KeyDown(int direction) => SendScan(ArrowScan[direction], false);
-        public void KeyUp(int direction) => SendScan(ArrowScan[direction], true);
-
-        private static void SendScan(ushort scan, bool keyUp)
+        public void SetKeyCodes(int[] codes)
         {
-            uint flags = KEYEVENTF_SCANCODE | KEYEVENTF_EXTENDEDKEY;
+            _scan = new ushort[codes.Length];
+            _ext = new bool[codes.Length];
+            for (int i = 0; i < codes.Length; i++)
+            {
+                _scan[i] = (ushort)(codes[i] & 0xFFFF);
+                _ext[i] = (codes[i] & 0x10000) != 0;
+            }
+        }
+
+        public void KeyDown(int direction) => SendScan(_scan[direction], _ext[direction], false);
+        public void KeyUp(int direction) => SendScan(_scan[direction], _ext[direction], true);
+
+        private static void SendScan(ushort scan, bool extended, bool keyUp)
+        {
+            uint flags = KEYEVENTF_SCANCODE;
+            if (extended) flags |= KEYEVENTF_EXTENDEDKEY;
             if (keyUp) flags |= KEYEVENTF_KEYUP;
 
             var input = new INPUT

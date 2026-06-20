@@ -58,6 +58,7 @@ namespace FNFBot.Core.Input
     {
         public void KeyDown(int direction) { }
         public void KeyUp(int direction) { }
+        public void SetKeyCodes(int[] codes) { }
     }
 
     internal sealed class NullHotkeyListener : IHotkeyListener

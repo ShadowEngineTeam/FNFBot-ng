@@ -56,15 +56,33 @@ namespace FridayNightFunkin
             if (chartRoot.TryGetProperty("scrollSpeed", out var speed))
                 song.Speed = speed.GetDouble();
 
+            if (chartRoot.TryGetProperty("meta", out var metaElem) && metaElem.ValueKind == JsonValueKind.Object)
+            {
+                if (metaElem.TryGetProperty("keyCount", out var keyCountVal) && keyCountVal.ValueKind == JsonValueKind.Number)
+                    song.KeyCount = Math.Max(1, keyCountVal.GetInt32());
+                else if (metaElem.TryGetProperty("mania", out var maniaVal) && maniaVal.ValueKind == JsonValueKind.Number)
+                    song.KeyCount = PsychParser.ReadKeyCount(chartRoot);
+            }
+
             if (!chartRoot.TryGetProperty("strumLines", out var sl) || sl.ValueKind != JsonValueKind.Array)
                 return;
 
+            int kc = song.KeyCount;
             var allNotes = new List<(double time, double length, int lane, bool isPlayer)>();
 
             foreach (var strumLine in sl.EnumerateArray())
             {
                 int type = (int)ChartUtils.GetDouble(strumLine, "type");
                 bool isPlayer = type == 1;
+
+                if (kc < 2 && strumLine.TryGetProperty("notes", out var sample) && sample.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var n in sample.EnumerateArray())
+                    {
+                        int id = (int)ChartUtils.GetDouble(n, "id", 0);
+                        if (id + 1 > kc) kc = id + 2;
+                    }
+                }
 
                 if (!strumLine.TryGetProperty("notes", out var notes) || notes.ValueKind != JsonValueKind.Array)
                     continue;
@@ -79,6 +97,8 @@ namespace FridayNightFunkin
                     ));
                 }
             }
+
+            song.KeyCount = kc;
 
             allNotes.Sort((a, b) => a.time.CompareTo(b.time));
 
@@ -99,21 +119,17 @@ namespace FridayNightFunkin
                     while (idx < allNotes.Count && allNotes[idx].time < end)
                     {
                         var (time, length, lane, isPlayer) = allNotes[idx];
-                        int dir = lane % 4;
                         secNotes.Add(new FNFSong.FNFNote
                         {
                             Time = time,
                             Length = length,
-                            Type = (FNFSong.NoteType)(isPlayer ? dir : dir + 4)
+                            Lane = lane % kc,
+                            IsPlayer = isPlayer
                         });
                         idx++;
                     }
 
-                    song.Sections.Add(new FNFSong.FNFSection
-                    {
-                        MustHitSection = true,
-                        Notes = secNotes
-                    });
+                    song.Sections.Add(new FNFSong.FNFSection { Notes = secNotes });
                 }
             }
         }

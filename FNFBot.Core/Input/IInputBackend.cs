@@ -8,5 +8,6 @@ namespace FNFBot.Core.Input
     {
         void KeyDown(int direction);
         void KeyUp(int direction);
+        void SetKeyCodes(int[] codes);
     }
 }

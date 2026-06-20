@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 
 namespace FNFBot.Core
 {
@@ -19,6 +20,7 @@ namespace FNFBot.Core
         public int HoldMaxMs = 90;      // hold release high bound
         public bool AutoFail = false;   // randomly miss notes
         public int PressRate = 100;     // accuracy 0-100 (100 = perfect)
+        public string[] KeyNames = { "Left", "Down", "Up", "Right" };
 
         public static BotSettings Load()
         {
@@ -59,7 +61,13 @@ namespace FNFBot.Core
                         case "holdmax": s.HoldMaxMs = Math.Max(s.HoldMinMs, num); break;
                         case "autofail": s.AutoFail = num != 0; break;
                         case "pressrate": s.PressRate = Math.Max(0, Math.Min(100, num)); break;
-                        default: break;
+                        default:
+                            if (key == "keynames")
+                            {
+                                string val = line.Substring(eq + 1).Trim();
+                                s.KeyNames = val.Split(',').Select(x => x.Trim()).ToArray();
+                            }
+                            break;
                     }
                 }
             }
@@ -71,11 +79,13 @@ namespace FNFBot.Core
         {
             try
             {
+                string kn = KeyNames == null || KeyNames.Length == 0 ? "Left,Down,Up,Right" : string.Join(",", KeyNames);
                 File.WriteAllText(SettingsFile,
                     $"offset={Offset}\nfailcount={FailCount}\n" +
                     $"pressmin={PressMinMs}\npressmax={PressMaxMs}\n" +
                     $"holdmin={HoldMinMs}\nholdmax={HoldMaxMs}\n" +
-                    $"autofail={(AutoFail ? 1 : 0)}\npressrate={PressRate}\n");
+                    $"autofail={(AutoFail ? 1 : 0)}\npressrate={PressRate}\n" +
+                    $"keynames={kn}\n");
             }
             catch { }
         }

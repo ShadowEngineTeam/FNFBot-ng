@@ -58,6 +58,9 @@ namespace FNFBot.App
             if (notes == null || notes.Count == 0)
                 return;
 
+            for (int i = 0; i < notes.Count; i++)
+                if (notes[i].Lane > 3) return;
+
             double cur = eng.CurrentTimeMs;
             double secLen = eng.SectionLenMs;
             if (secLen <= 0 || h <= 0)
@@ -74,7 +77,7 @@ namespace FNFBot.App
                 double endDiff = (n.Length > 0 ? n.Time + n.Length : n.Time) - cur;
                 if (endDiff < -window * 0.25) continue;
 
-                int dir = ((int)n.Type) % 4;
+                int dir = n.Lane;
                 double x = 4 + dir * Lane;
                 double y = (timeDiff / window) * h;
 
@@ -84,10 +87,10 @@ namespace FNFBot.App
                     double top = Math.Min(y, tailY) + Size / 2;
                     double bottom = Math.Max(y, tailY) + Size / 2;
                     double len = Math.Max(4, bottom - top);
-                    context.DrawRectangle(TrailBrush[dir], null, new Rect(x + 10, top, 12, len));
+                    context.DrawRectangle(TrailBrush[dir % 4], null, new Rect(x + 10, top, 12, len));
                 }
 
-                context.DrawRectangle(HeadBrush[dir], null, new RoundedRect(new Rect(x, y, Size, Size), 6));
+                context.DrawRectangle(HeadBrush[dir % 4], null, new RoundedRect(new Rect(x, y, Size, Size), 6));
             }
         }
     }
