@@ -664,7 +664,7 @@ namespace FNFBot.Core
 
         private void ReleaseExpiredHolds(double t)
         {
-            for (int dir = 0; dir < 4; dir++)
+            for (int dir = 0; dir < _holdTimes.Length; dir++)
                 if (_holdTimes[dir] != 0 && t > _holdTimes[dir])
                 {
                     _holdTimes[dir] = 0;
@@ -674,7 +674,7 @@ namespace FNFBot.Core
 
         private void ReleaseAllHolds()
         {
-            for (int dir = 0; dir < 4; dir++)
+            for (int dir = 0; dir < _holdTimes.Length; dir++)
                 if (_holdTimes[dir] != 0)
                 {
                     _holdTimes[dir] = 0;
@@ -684,7 +684,7 @@ namespace FNFBot.Core
 
         private bool AnyHoldActive()
         {
-            for (int dir = 0; dir < 4; dir++)
+            for (int dir = 0; dir < _holdTimes.Length; dir++)
                 if (_holdTimes[dir] != 0)
                     return true;
             return false;
