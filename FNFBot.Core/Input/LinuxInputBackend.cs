@@ -106,7 +106,7 @@ namespace FNFBot.Core.Input
 
         private void RegisterAllKeys()
         {
-            // Register all potentially needed keys up front.
+            // Register all bindable keys up front.
             var all = new HashSet<ushort>(KeyMap.ToLinuxEv(KeyMap.DefaultNames(9)));
             foreach (ushort k in all)
                 ioctl_int(_fd, UI_SET_KEYBIT, k);

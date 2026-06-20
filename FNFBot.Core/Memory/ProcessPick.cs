@@ -1,8 +1,6 @@
 namespace FNFBot.Core.Memory
 {
-    /// <summary>
-    /// A user-selectable running process, shown in the "Attach Game" picker.
-    /// </summary>
+    /// <summary>A process entry in the "Attach Game" picker.</summary>
     public sealed class ProcessPick
     {
         public int Pid { get; }

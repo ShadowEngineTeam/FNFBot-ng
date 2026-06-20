@@ -15,7 +15,7 @@ namespace FNFBot.Core.Input
         [DllImport("user32.dll")]
         private static extern short GetAsyncKeyState(int vKey);
 
-        // VK codes F1..F4 mapped to the hotkey enum (same order).
+        // F1-F4 virtual key codes.
         private static readonly int[] Vks = { 0x70, 0x71, 0x72, 0x73 };
 
         private Thread _thread;

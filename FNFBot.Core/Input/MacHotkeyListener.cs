@@ -20,8 +20,7 @@ namespace FNFBot.Core.Input
 
         private const int kCGEventSourceStateHIDSystemState = 1;
 
-        // Carbon virtual key codes (HIToolbox/Events.h). The values are non-sequential
-        // (F4 is 0x76, F5 is 0x60), so they are named to avoid mix-ups.
+        // Carbon virtual key codes (non-sequential; named constants avoid confusion).
         private const ushort kVK_F1 = 0x7A; // 122
         private const ushort kVK_F2 = 0x78; // 120
         private const ushort kVK_F3 = 0x63; // 99

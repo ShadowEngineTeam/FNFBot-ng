@@ -47,18 +47,11 @@ namespace FNFBot.Core
         private string _chartPath;
         private string _difficulty;
 
-        // --- game-memory attach / Conductor following ---------------------------
-        // The bot can attach to a running FNF process, find Conductor.songPosition,
-        // and play in lockstep with it: it starts only on the song's negative
-        // countdown, follows pauses/resumes, and re-syncs after seeks. See
-        // the song-clock classes (ModuleStaticSongClock / VSliceSongClock) for the
-        // locking strategy.
+        // --- memory attach / Conductor following ---------------------------------
         private const double CountdownDeepMs = -800;  // a real "3-2-1" dips below this
         private const double CountdownNearMs = -350;  // ...then climbs back up to here
-        // A backward jump landing within this of the start means the song ended / the
-        // player exited to a menu or freeplay (songPosition snapped back). It disarms us:
-        // engines like Codename drive the SAME global songPosition forward for freeplay
-        // autoplay previews, so without this an armed bot would mash in the menu.
+        // Backward jump within ReentryGuardMs of 0 means song ended / exited to menu. Disarms
+        // so Codename's freeplay autoplay can't fire notes.
         private const double ReentryGuardMs = 5000;
 
         private ISongClock _mem;
@@ -218,7 +211,7 @@ namespace FNFBot.Core
             _playing = false;
             _ended = false;
 
-            // Fresh chart: re-arm from scratch so the next in-game countdown triggers it.
+            // Fresh chart: reset arm state for the next countdown.
             _memArmed = false;
             _cdSawDeep = false;
             _memWasRunning = false;
@@ -311,14 +304,9 @@ namespace FNFBot.Core
             double pos = _mem.InterpolatedMs;
             bool advancing = _mem.Advancing;
 
-            // While armed, a backward jump of more than one beat means we left gameplay
-            // (menu, freeplay, song complete). Disarm so the bot doesn't press during
-            // menu autoplay previews that drive the same songPosition forward.
-            // Only re-arm on a fresh negative countdown.
-            // Don't disarm when the backward jump lands in the countdown range (pos < 0):
-            // that's a song restart (countdown goes -800→0), not an exit.  Without this
-            // guard, a pause-screen arm followed by restart would spuriously disarm because
-            // _memLastT is frozen near 0 and the restart jumps to -800.
+            // Backward jump >1 beat means exit to menu/freeplay. Disarm so autoplay
+            // previews can't fire notes. Don't disarm if landing in negative range:
+            // that's a restart, not an exit.
             if (_memArmed && pos - _memLastT < -250 && pos >= 0 && pos < ReentryGuardMs)
             {
                 Disarm("song ended or exited gameplay");

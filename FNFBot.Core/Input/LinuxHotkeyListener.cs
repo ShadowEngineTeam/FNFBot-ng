@@ -8,6 +8,7 @@ using System.Threading;
 
 namespace FNFBot.Core.Input
 {
+    /// <summary>Detects F1-F4 by polling /dev/input/event* on a background thread.</summary>
     [SupportedOSPlatform("linux")]
     public sealed class LinuxHotkeyListener : IHotkeyListener
     {

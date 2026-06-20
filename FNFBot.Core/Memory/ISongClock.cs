@@ -1,13 +1,6 @@
 namespace FNFBot.Core.Memory
 {
-    /// <summary>
-    /// A source of the game's current song time, found and followed in another process's
-    /// memory. Implementations: <see cref="ModuleStaticSongClock"/> (and its subclasses
-    /// <see cref="PsychSongClock"/> / <see cref="CodenameSongClock"/>) for engines that keep
-    /// <c>Conductor.songPosition</c> as a module static, and <see cref="VSliceSongClock"/>
-    /// for Funkin V-Slice, whose Conductor is a heap singleton reached through a static
-    /// pointer.
-    /// </summary>
+    /// <summary>Provides the current song time from another process's memory.</summary>
     public interface ISongClock
     {
         /// <summary>True once an address (or pointer chain) has been pinned.</summary>

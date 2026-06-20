@@ -6,11 +6,7 @@ using System.Runtime.InteropServices;
 
 namespace FNFBot.Core.Memory
 {
-    /// <summary>
-    /// Linux backend: enumerates regions from <c>/proc/&lt;pid&gt;/maps</c> and reads with
-    /// <c>process_vm_readv</c>. Needs permission to ptrace the target: run the bot with
-    /// <c>sudo</c>, or relax the scope (<c>sudo sysctl -w kernel.yama.ptrace_scope=0</c>).
-    /// </summary>
+    /// <summary>Linux backend: /proc/PID/maps + process_vm_readv. Needs sudo or relaxed ptrace_scope.</summary>
     public sealed class LinuxProcessMemory : ProcessMemory
     {
         private readonly string _exePath;
@@ -95,19 +91,14 @@ namespace FNFBot.Core.Memory
             if (max <= min)
                 return;
 
-            // Static fields (e.g. Conductor.songPosition, a Float) live in the executable's
-            // .bss, which Linux maps as anonymous writable regions right after the file-backed
-            // data.  Extend the module range through those so the module-wide scan covers them.
+            // .bss is anonymous writable memory right after the exe's file-backed mappings.
             ExtendBss(ref max);
 
             ModuleBase = min;
             ModuleEnd = max;
         }
 
-        /// <summary>
-        /// Extends <paramref name="end"/> through contiguous anonymous writable regions
-        /// (the .bss segment of a native executable or library on Linux).
-        /// </summary>
+        /// <summary>Extends end past contiguous anonymous writable regions (.bss).</summary>
         private void ExtendBss(ref ulong end)
         {
             ulong extended = 0;
@@ -130,11 +121,7 @@ namespace FNFBot.Core.Memory
             }
         }
 
-        /// <summary>
-        /// Returns a hint string if the target runs through a compatibility/emulation layer,
-        /// or null if it's a native executable.  Called before attach to give the user a
-        /// clear message instead of silently falling back to a full-memory sweep.
-        /// </summary>
+        /// <summary>Returns a message if process runs under a compatibility layer, otherwise null.</summary>
         private static string LoaderHint(string exePath)
         {
             if (string.IsNullOrEmpty(exePath))
@@ -187,8 +174,7 @@ namespace FNFBot.Core.Memory
 
         public override IEnumerable<(ulong addr, ulong size)> WritableRegions(bool moduleOnly)
         {
-            // Module-only is range-based (covers the exe's data and the .bss tail resolved in
-            // ResolveModule); otherwise sweep every writable region.
+            // Module-only uses the resolved range; otherwise sweep all writable regions.
             bool useRange = moduleOnly && HasModule;
             foreach (var (start, end, perms, _) in Maps())
             {
@@ -215,7 +201,7 @@ namespace FNFBot.Core.Memory
                     yield return (start, end - start);
         }
 
-        /// <summary>Parses /proc/&lt;pid&gt;/maps lines: "start-end perms offset dev inode path".</summary>
+        /// <summary>Yields (start, end, perms, pathname) from /proc/PID/maps.</summary>
         private IEnumerable<(ulong start, ulong end, string perms, string path)> Maps()
         {
             string file = $"/proc/{Pid}/maps";
@@ -237,10 +223,7 @@ namespace FNFBot.Core.Memory
             }
         }
 
-        /// <summary>
-        /// Parses one /proc/&lt;pid&gt;/maps line ("start-end perms offset dev inode path").
-        /// Public + static so it can be unit-tested without a live process.
-        /// </summary>
+        /// <summary>Parses one /proc/PID/maps line. Returns false on malformed input.</summary>
         public static bool TryParseMapsLine(string line, out ulong start, out ulong end, out string perms, out string path)
         {
             start = end = 0;
@@ -260,7 +243,7 @@ namespace FNFBot.Core.Memory
 
             perms = sp + 5 <= line.Length ? line.Substring(sp + 1, 4) : "----";
 
-            // pathname is the first '/'- or '['-prefixed token after the perms.
+            // Pathname starts at the first '/' or '[' past the permission field.
             int slash = line.IndexOf('/', sp);
             int brack = line.IndexOf('[', sp);
             int pi = slash >= 0 && (brack < 0 || slash < brack) ? slash : brack;
@@ -275,12 +258,11 @@ namespace FNFBot.Core.Memory
         [StructLayout(LayoutKind.Sequential)]
         private struct IoVec
         {
-            public IntPtr Base; // iov_base
-            public IntPtr Len;  // iov_len (size_t)
+            public IntPtr Base;
+            public IntPtr Len;
         }
 
-        // unsigned long / ssize_t are native-width on Linux (8 bytes on x64/arm64, 4 on
-        // armhf), so use nuint/nint rather than ulong/long to stay correct on 32-bit ARM.
+        // Native-width types for correctness on 32-bit ARM.
         [DllImport("libc", SetLastError = true)]
         private static extern nint process_vm_readv(int pid, ref IoVec localIov, nuint liovcnt, ref IoVec remoteIov, nuint riovcnt, nuint flags);
     }

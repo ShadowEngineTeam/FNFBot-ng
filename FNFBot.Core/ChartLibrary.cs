@@ -156,7 +156,7 @@ namespace FNFBot.Core
             catch { return false; }
         }
 
-        /// <summary>True if the Psych song object has at least one section with notes.</summary>
+        /// <summary>True if the Psych chart has at least one note.</summary>
         private static bool HasPsychNotes(JsonElement root)
         {
             var song = root.GetProperty("song");
@@ -165,7 +165,7 @@ namespace FNFBot.Core
             return song.TryGetProperty("notes", out var sections) && sections.ValueKind == JsonValueKind.Array && sections.GetArrayLength() > 0;
         }
 
-        /// <summary>True if the V-Slice chart has at least one difficulty with notes.</summary>
+        /// <summary>True if V-Slice chart has at least one difficulty with notes.</summary>
         private static bool HasVSliceNotes(JsonElement root)
         {
             if (!root.TryGetProperty("notes", out var notes) || notes.ValueKind != JsonValueKind.Object)
@@ -176,7 +176,7 @@ namespace FNFBot.Core
             return false;
         }
 
-        /// <summary>True if the Codename chart has at least one strum line with notes.</summary>
+        /// <summary>True if Codename chart has at least one note.</summary>
         private static bool HasCodenameNotes(JsonElement root)
         {
             if (!root.TryGetProperty("strumLines", out var sl) || sl.ValueKind != JsonValueKind.Array)

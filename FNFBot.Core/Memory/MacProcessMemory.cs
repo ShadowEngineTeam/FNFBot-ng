@@ -5,12 +5,7 @@ using System.Runtime.InteropServices;
 
 namespace FNFBot.Core.Memory
 {
-    /// <summary>
-    /// macOS backend (experimental): reads via Mach VM (<c>task_for_pid</c> +
-    /// <c>mach_vm_read_overwrite</c> + <c>mach_vm_region</c>). <c>task_for_pid</c> needs root,
-    /// so run the bot with <c>sudo</c>. No module range is resolved, so the song clocks scan
-    /// all writable memory. Mach calls are guarded, falling back to manual F2 on any failure.
-    /// </summary>
+    /// <summary>macOS backend (experimental): Mach VM. Needs root; no module range, full sweep fallback.</summary>
     public sealed class MacProcessMemory : ProcessMemory
     {
         private uint _task;
@@ -131,9 +126,7 @@ namespace FNFBot.Core.Memory
             while (guard++ < 2_000_000)
             {
                 ulong size = 0;
-                // vm_region_basic_info_data_64_t is 40 bytes (the uint64 `offset` forces
-                // 8-byte alignment), i.e. VM_REGION_BASIC_INFO_COUNT_64 == 10 natural_t's.
-                // Pass the correct count with a roomy buffer; protection is the first int.
+                // Info struct is ~40 bytes; protection sits at info[0].
                 var info = new int[16];
                 uint cnt = VM_REGION_BASIC_INFO_COUNT_64;
                 int kr;

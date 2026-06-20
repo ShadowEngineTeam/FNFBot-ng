@@ -4,20 +4,7 @@ using System.Threading;
 
 namespace FNFBot.Core.Memory
 {
-    /// <summary>
-    /// Finds and follows <c>Conductor.instance.songPosition</c> in Funkin V-Slice, whose
-    /// Conductor is a heap singleton (<c>Conductor._instance</c>) rather than a module static.
-    ///
-    /// <para>A blind value-scan of a multi-GB game is slow and can't tell songPosition from
-    /// preview timers, so this probes anchor-first: once, find the module statics that point
-    /// at a real heap object (<c>Conductor._instance</c> is one), then each cycle read through
-    /// those pointers twice ~140ms apart and keep the field advancing at ~1ms/ms. Reading
-    /// through the static stays correct across GC moves and bounds the work to a few MB.</para>
-    ///
-    /// <para>Arming/pausing/disarming live in <c>BotEngine</c>, identical to the other engines:
-    /// V-Slice's countdown dips to <c>-crochet*5</c> while playback clamps songPosition to
-    /// roughly 0+, so freeplay previews never arm it.</para>
-    /// </summary>
+    /// <summary>Finds Conductor.instance.songPosition in V-Slice via heap singleton anchor probing.</summary>
     public sealed class VSliceSongClock : ISongClock
     {
         private const double RangeMin = -12_000;
@@ -131,7 +118,7 @@ namespace FNFBot.Core.Memory
                 ScanTick();
         }
 
-        // ----- locked: follow the pointer chain ---------------------------------
+        // ----- locked -------------------------------------------------------------
 
         private bool ReadCurrent(out double v)
         {
@@ -167,7 +154,7 @@ namespace FNFBot.Core.Memory
             }
         }
 
-        // ----- unlocked: anchor-first scan --------------------------------------
+        // ----- unlocked -----------------------------------------------------------
 
         private void ScanTick()
         {
@@ -205,8 +192,7 @@ namespace FNFBot.Core.Memory
             var heap = ToRangeSet(WritableOutsideModule(modBase, modEnd));
             var readable = ToRangeSet(ReadableList());
 
-            // Strict (object's first word must be a readable vtable) keeps the probe set
-            // small; if it finds nothing, fall back to "points into the heap".
+            // Strict mode requires a readable vtable; fall back to heap-only if empty.
             var list = CollectAnchors(heap, readable, strictVtable: _strict);
             if (_strict && list.Count == 0)
             {
@@ -258,7 +244,7 @@ namespace FNFBot.Core.Memory
             if (_bufB == null) _bufB = new byte[ProbeBytes];
             _probeA.Clear();
 
-            // Pass A: read through each static, record in-range doubles.
+            // Pass A: read through each static, record in-range values.
             for (int i = 0; i < _anchorStatics.Length; i++)
             {
                 if (!_mem.ReadPointer(_anchorStatics[i], out ulong objBase) || objBase == 0)
@@ -278,7 +264,7 @@ namespace FNFBot.Core.Memory
             long dt = Now - tA;
             if (dt <= 0) dt = ProbeGapMs;
 
-            // Pass B: re-read through each static and keep fields advancing ~1ms/ms.
+            // Pass B: re-read, keep fields advancing ~1ms/ms.
             ulong bestStatic = 0; int bestOff = 0; bool bestNeg = false; double bestVal = 0;
             bool found = false; int candidates = 0; int probed = 0;
 
@@ -302,7 +288,7 @@ namespace FNFBot.Core.Memory
 
                     candidates++;
                     bool neg = v < 0 || before < 0;
-                    // Prefer a candidate we caught going negative (a real countdown).
+                    // Prefer a candidate that went negative (real countdown signal).
                     if (!found || (neg && !bestNeg))
                     {
                         found = true;
@@ -330,7 +316,7 @@ namespace FNFBot.Core.Memory
                 return;
             }
 
-            // If the narrow (vtable-verified) set isn't catching it, broaden once.
+            // Broaden once if strict vtable set found nothing.
             if (_strict && _probesSinceBuild >= 6)
             {
                 _strict = false;
@@ -343,7 +329,7 @@ namespace FNFBot.Core.Memory
                 _log?.Invoke($"V-Slice: scanning... probed {probed} objects, 0 advancing songPosition yet (dt={dt}ms). Make sure a song or menu music is actually playing.");
         }
 
-        // ----- no-module fallback (rare: 32-bit cross, or module unreadable) -----
+        // ----- no-module fallback -------------------------------------------------
 
         private bool _loggedFallback;
 
@@ -408,7 +394,7 @@ namespace FNFBot.Core.Memory
             return dict;
         }
 
-        // ----- helpers ----------------------------------------------------------
+        // ----- helpers -----------------------------------------------------------
 
         private static bool InRange(double v) =>
             v >= RangeMin && v <= RangeMax && !(v > -1e-6 && v < 1e-6) && !double.IsNaN(v) && !double.IsInfinity(v);
@@ -432,7 +418,7 @@ namespace FNFBot.Core.Memory
 
         private static RangeSet ToRangeSet(List<(ulong, ulong)> ranges) => new RangeSet(ranges);
 
-        /// <summary>Sorted, non-overlapping address ranges with O(log n) containment.</summary>
+        /// <summary>Sorted, non-overlapping address ranges with binary search.</summary>
         private sealed class RangeSet
         {
             private readonly ulong[] _starts;

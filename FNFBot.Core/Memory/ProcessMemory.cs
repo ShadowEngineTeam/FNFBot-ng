@@ -1,17 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 
 namespace FNFBot.Core.Memory
 {
-    /// <summary>
-    /// A read-only window into another process's memory, used to find and follow the FNF
-    /// engine's <c>Conductor.songPosition</c>. This is the platform-independent contract;
-    /// <see cref="OpenByPid"/> returns the right backend for the OS
-    /// (<see cref="WindowsProcessMemory"/>, <see cref="LinuxProcessMemory"/>,
-    /// <see cref="MacProcessMemory"/>). Reading another process needs elevated rights on
-    /// every OS: admin on Windows, and <c>sudo</c> (or a relaxed ptrace scope) on Linux/macOS.
-    /// </summary>
+    /// <summary>Read-only access to another process's memory. Platform-agnostic; dispatching is in <see cref="OpenByPid"/>.</summary>
     public abstract class ProcessMemory : IDisposable
     {
         public static bool IsSupported =>
@@ -20,15 +14,12 @@ namespace FNFBot.Core.Memory
         public int Pid { get; }
         public string Name { get; }
 
-        /// <summary>Base address of the target's main module (the executable image), or 0.</summary>
         public ulong ModuleBase { get; protected set; }
 
-        /// <summary>One-past-the-end address of the main module image, or 0.</summary>
         public ulong ModuleEnd { get; protected set; }
 
         public bool HasModule => ModuleEnd > ModuleBase;
 
-        /// <summary>Pointer width of the target: 8 (64-bit) or 4 (32-bit).</summary>
         public int PointerSize { get; protected set; } = 8;
 
         protected ProcessMemory(int pid, string name)
@@ -41,13 +32,10 @@ namespace FNFBot.Core.Memory
 
         public abstract bool IsAlive { get; }
 
-        /// <summary>Reads <paramref name="count"/> bytes at <paramref name="address"/> from the target.</summary>
         public abstract bool Read(ulong address, byte[] buffer, int count);
 
-        /// <summary>Committed writable regions; restricted to the main module when asked and known.</summary>
         public abstract IEnumerable<(ulong addr, ulong size)> WritableRegions(bool moduleOnly);
 
-        /// <summary>Committed readable regions across the whole address space.</summary>
         public abstract IEnumerable<(ulong addr, ulong size)> ReadableRegions();
 
         public virtual void Dispose() { }
@@ -66,7 +54,6 @@ namespace FNFBot.Core.Memory
             return true;
         }
 
-        /// <summary>Reads a pointer-sized value (for following static-&gt;heap chains).</summary>
         public bool ReadPointer(ulong address, out ulong value)
         {
             value = 0;
@@ -99,14 +86,12 @@ namespace FNFBot.Core.Memory
             return null;
         }
 
-        /// <summary>
-        /// Linux/macOS process list. There is no portable window-title API there, so we list
-        /// by process name and let the user pick (e.g. "ShadowEngine", "Funkin", "Corruption").
-        /// </summary>
+        /// <summary>Linux/macOS process list. On Linux, excludes processes without DISPLAY or WAYLAND_DISPLAY.</summary>
         protected static List<ProcessPick> ListByProcessName()
         {
             var list = new List<ProcessPick>();
             int self = Environment.ProcessId;
+            bool isLinux = OperatingSystem.IsLinux();
             foreach (var p in Process.GetProcesses())
             {
                 try
@@ -115,6 +100,8 @@ namespace FNFBot.Core.Memory
                         continue;
                     string name = p.ProcessName;
                     if (string.IsNullOrEmpty(name))
+                        continue;
+                    if (isLinux && !HasDisplayConnection(p.Id))
                         continue;
                     list.Add(new ProcessPick(p.Id, name, ""));
                 }
@@ -129,6 +116,34 @@ namespace FNFBot.Core.Memory
             }
             list.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
             return list;
+        }
+
+        /// <summary>Checks /proc/&lt;pid&gt;/environ for DISPLAY or WAYLAND_DISPLAY.</summary>
+        private static bool HasDisplayConnection(int pid)
+        {
+            try
+            {
+                string environ = File.ReadAllText($"/proc/{pid}/environ");
+                int i = 0;
+                while (i < environ.Length)
+                {
+                    int end = environ.IndexOf('\0', i);
+                    if (end < 0) end = environ.Length;
+                    if (end - i > 0)
+                    {
+                        string entry = environ.Substring(i, end - i);
+                        if (entry.StartsWith("DISPLAY=", StringComparison.Ordinal) ||
+                            entry.StartsWith("WAYLAND_DISPLAY=", StringComparison.Ordinal))
+                            return true;
+                    }
+                    i = end + 1;
+                }
+            }
+            catch
+            {
+                // Can't read environment (permission, vanished); treat as non-GUI.
+            }
+            return false;
         }
     }
 }

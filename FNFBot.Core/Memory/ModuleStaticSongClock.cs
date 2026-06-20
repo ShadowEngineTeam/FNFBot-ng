@@ -3,49 +3,25 @@ using System.Collections.Generic;
 
 namespace FNFBot.Core.Memory
 {
-    /// <summary>
-    /// Finds and follows <c>Conductor.songPosition</c> for engines that keep it as a module
-    /// static (Psych, Shadow, Codename), exposing a smooth play clock.
-    ///
-    /// <para>songPosition is a Haxe static Float (a 64-bit double).  It lives in the native
-    /// executable's .bss section, which the Linux backend resolves as a tail extension of the
-    /// file-backed module range (<see cref="LinuxProcessMemory.ExtendBss"/>).  Matching by
-    /// value is impossible (zeroed RAM is 0.0, and the time range matches millions of doubles),
-    /// so the clock matches by <em>behaviour</em>: two snapshots of every in-range double in
-    /// the module's writable pages, keeping those that advance at ~1 ms/ms.  Locking on a
-    /// false positive is harmless because the bot never presses without a confirmed negative
-    /// countdown — see <see cref="BotEngine.UpdateArm"/>.</para>
-    ///
-    /// <para>Shared base; subclasses (<see cref="PsychSongClock"/>, <see cref="CodenameSongClock"/>)
-    /// only set the label and name match. V-Slice's heap singleton uses <see cref="VSliceSongClock"/>.</para>
-    /// </summary>
+    /// <summary>Finds Conductor.songPosition for engines with a module-static Float. Matches by slope (~1ms/ms), not value.</summary>
     public class ModuleStaticSongClock : ISongClock
     {
-        // Plausible songPosition window: a long countdown for a slow song reaches a few
-        // thousand ms negative; a 20-minute song is ~1.2M ms. Anything outside is noise.
+        // Min countdown to 20-min song range. Everything outside is noise.
         private const double RangeMin = -12_000;
         private const double RangeMax = 1_200_000;
 
-        // Two snapshot reads must be this far apart (ms) to measure a clean slope. The full
-        // scan reads far more memory per pass (and a Wine/Box64-hosted game is large), so it
-        // tolerates a much wider interval; the slope band still rejects junk.
+        // Min/max dt between snapshot pairs. Full scan tolerates wider intervals for Wine/Box64 targets.
         private const long MinDtMs = 40;
         private const long MaxDtMs = 600;
         private const long MaxDtFullMs = 30_000;
 
-        // If the module-only scan hasn't locked after this many cycles, widen to a full
-        // writable-memory sweep.  This mainly covers games running through Wine/Box64/FEX
-        // where /proc/<pid>/exe is the loader rather than the game binary.
+        // Module-wide scan cycles before falling back to full writable sweep (for Wine/Box64/FEX).
         private const int EscalateAfterCycles = 160; // ~19 s of module scan before widening
 
-        // In full-scan mode, only candidates seen going through the negative countdown are
-        // the real songPosition (everything else is a decoy like uptime).  If no negative
-        // candidate appears within this many cycles, fall back to the best non-negative
-        // candidate so the bot doesn't wait forever when attached mid-song or in freeplay.
+        // Full-scan mode requires negative countdown signal. Fall back to best non-negative after this many cycles.
         private const int FullScanNegCycles = 60;
 
-        // A candidate advancing within this slope band (ms moved / ms elapsed) is a
-        // clock. Wide enough to tolerate the engine's playbackRate and per-frame lerp.
+        // Acceptable slope band: ms advanced / ms elapsed.
         private const double SlopeMin = 0.40;
         private const double SlopeMax = 2.50;
 
@@ -158,7 +134,7 @@ namespace FNFBot.Core.Memory
                 ScanTick();
         }
 
-        // ----- locked: follow the address ---------------------------------------
+        // ----- locked -------------------------------------------------------------
 
         private void FollowTick()
         {
@@ -182,7 +158,7 @@ namespace FNFBot.Core.Memory
             }
         }
 
-        // ----- unlocked: scan for the address -----------------------------------
+        // ----- unlocked -----------------------------------------------------------
 
         private void ScanTick()
         {
@@ -216,8 +192,7 @@ namespace FNFBot.Core.Memory
                     _scanCycles++;
                     TryLock();
 
-                    // Module-only scan hasn't locked: widen to all writable memory.  Needed
-                    // for games running through Wine/Box64/FEX where the loader is the module.
+                    // Module-only timed out; widen to full sweep for Wine/Box64/FEX targets.
                     if (!_located && moduleOnly && _scanCycles >= EscalateAfterCycles)
                     {
                         _fullScan = true;
@@ -239,7 +214,7 @@ namespace FNFBot.Core.Memory
 
             foreach (var (addr, size) in _mem.WritableRegions(moduleOnly))
             {
-                // Skip absurdly large regions in the full-memory fallback to stay responsive.
+                // Skip oversized regions in full-memory sweep to stay responsive.
                 if (!moduleOnly && size > 256UL * 1024 * 1024)
                     continue;
 
@@ -263,7 +238,7 @@ namespace FNFBot.Core.Memory
                     dict[addr + (ulong)off] = v;
                 }
 
-                // Safety valve: a pathological set means our filter is too loose.
+                // Safety valve for a too-loose value filter.
                 if (dict.Count > 4_000_000)
                     break;
             }
@@ -281,9 +256,7 @@ namespace FNFBot.Core.Memory
             {
                 bool neg = _sawNeg.Contains(kv.Key);
 
-                // In full-scan / no-module mode, the only reliable signal distinguishing
-                // songPosition from decoys (uptime counters, etc.) is the negative countdown.
-                // Require it, but fall back to the best candidate after enough cycles.
+                // Full-scan: require negative countdown signal, fall back after enough cycles.
                 bool requireNeg = (_fullScan || !_mem.HasModule)
                                && _scanCycles < FullScanNegCycles;
                 if (requireNeg && !neg)
@@ -293,9 +266,7 @@ namespace FNFBot.Core.Memory
                 if (kv.Value < need)
                     continue;
 
-                // Strongest signal first: a value we saw go negative is a real countdown.
-                // Next, prefer a value inside the executable's module (where the static lives)
-                // over a stray counter in some library/heap region. Then most confirmations.
+                // Score by: negative countdown &gt; in-module address &gt; hit count.
                 bool inModule = _mem.HasModule && kv.Key >= _mem.ModuleBase && kv.Key < _mem.ModuleEnd;
                 int score = kv.Value + (neg ? 1_000_000 : 0) + (inModule ? 1_000 : 0);
                 if (score > bestScore)

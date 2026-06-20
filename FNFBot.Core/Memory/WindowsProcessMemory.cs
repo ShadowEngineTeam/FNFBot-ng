@@ -131,7 +131,7 @@ namespace FNFBot.Core.Memory
             return ok && read.ToInt64() == count;
         }
 
-        // MBI size / address ceiling depend on the BOT's own bitness (28/4 GB vs 48/full).
+        // MBI size and address ceiling depend on bot bitness.
         private static readonly ulong MaxUserAddr = IntPtr.Size == 8 ? 0x7FFFFFFFFFFFUL : 0xFFFFFFFFUL;
         private static readonly int MbiSize = IntPtr.Size == 8 ? 48 : 28;
 
