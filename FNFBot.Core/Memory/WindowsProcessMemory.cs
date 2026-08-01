@@ -9,6 +9,7 @@ namespace FNFBot.Core.Memory
     public sealed class WindowsProcessMemory : ProcessMemory
     {
         private IntPtr _handle;
+        private IntPtr _hwnd;
         private bool _disposed;
 
         private WindowsProcessMemory(int pid, string name, IntPtr handle) : base(pid, name)
@@ -64,7 +65,38 @@ namespace FNFBot.Core.Memory
             var mem = new WindowsProcessMemory(pid, name, h);
             mem.ResolveMainModule(log);
             mem.DetectBitness(log);
+            mem.ResolveWindowHandle();
             return mem;
+        }
+
+        private void ResolveWindowHandle()
+        {
+            try
+            {
+                using var p = Process.GetProcessById(Pid);
+                _hwnd = p.MainWindowHandle;
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Re-resolves the handle (a game can spawn its real window after the
+        /// process was first opened) and calls SetForegroundWindow so key presses
+        /// sent via SendInput land on the game instead of wherever focus happens
+        /// to be. Also un-minimizes, since a minimized window can't take focus.
+        /// </summary>
+        public override bool TryFocusWindow()
+        {
+            if (_disposed)
+                return false;
+            if (_hwnd == IntPtr.Zero)
+                ResolveWindowHandle();
+            if (_hwnd == IntPtr.Zero)
+                return false;
+
+            if (IsIconic(_hwnd))
+                ShowWindow(_hwnd, SW_RESTORE);
+            return SetForegroundWindow(_hwnd);
         }
 
         private void DetectBitness(Action<string> log)
@@ -268,5 +300,19 @@ namespace FNFBot.Core.Memory
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool IsWow64Process(IntPtr handle, [MarshalAs(UnmanagedType.Bool)] out bool wow64Process);
+
+        private const int SW_RESTORE = 9;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsIconic(IntPtr hWnd);
     }
 }

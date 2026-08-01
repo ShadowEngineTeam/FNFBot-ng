@@ -88,6 +88,8 @@ namespace FNFBot.Core.Memory
 
         private static long Now => Environment.TickCount64;
 
+        public bool TryFocusWindow() => _mem?.TryFocusWindow() ?? false;
+
         public void Attach(ProcessMemory mem)
         {
             _mem?.Dispose();

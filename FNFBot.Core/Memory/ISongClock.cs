@@ -24,6 +24,9 @@ namespace FNFBot.Core.Memory
         void Attach(ProcessMemory mem);
         void Detach();
 
+        /// <summary>Brings the attached game's window to the foreground, if attached. See <see cref="ProcessMemory.TryFocusWindow"/>.</summary>
+        bool TryFocusWindow();
+
         /// <summary>One step of work: scan-and-lock while unlocked, re-read once locked.</summary>
         void Tick();
     }

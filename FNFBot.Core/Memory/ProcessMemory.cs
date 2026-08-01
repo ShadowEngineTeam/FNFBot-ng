@@ -38,6 +38,17 @@ namespace FNFBot.Core.Memory
 
         public abstract IEnumerable<(ulong addr, ulong size)> ReadableRegions();
 
+        /// <summary>
+        /// Bring the attached game's window to the foreground so synthesized key
+        /// presses actually land on it. <see cref="Input.IInputBackend"/> sends to
+        /// whatever window currently owns OS input focus, so if the user's last
+        /// click/alt-tab left focus somewhere else (a common way to end up in this
+        /// state around an exclusive-fullscreen window), presses silently go
+        /// nowhere even though the bot is still tracking notes correctly. Default
+        /// is a no-op; platforms that can do this override it.
+        /// </summary>
+        public virtual bool TryFocusWindow() => false;
+
         public virtual void Dispose() { }
 
         // ----- shared typed reads ------------------------------------------------
