@@ -444,7 +444,7 @@ namespace FNFBot.App
             {
                 Title = "Settings",
                 Width = 380,
-                Height = 620,
+                Height = 540,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Icon = Icon,
                 CanResize = false
@@ -459,8 +459,6 @@ namespace FNFBot.App
             var holdMaxRow = MakeSliderRow("Hold max", s.HoldMaxMs, 0, 200);
             var autoFailBox = new CheckBox { Content = "Auto fail (miss notes)", IsChecked = s.AutoFail, Margin = new Thickness(0, 2, 0, 0) };
             var pressRateRow = MakeSliderRow("Press rate", s.PressRate, 0, 100);
-            var targetFpsRow = MakeSliderRow("Target FPS", s.TargetFps, 30, 1000);
-            var uncappedBox = new CheckBox { Content = "Uncapped press speed (no gap merge)", IsChecked = s.UncappedPressSpeed, Margin = new Thickness(0, 2, 0, 0) };
             panel.Children.Add(offsetRow);
             panel.Children.Add(failRow);
             panel.Children.Add(pressMinRow);
@@ -469,8 +467,6 @@ namespace FNFBot.App
             panel.Children.Add(holdMaxRow);
             panel.Children.Add(autoFailBox);
             panel.Children.Add(pressRateRow);
-            panel.Children.Add(targetFpsRow);
-            panel.Children.Add(uncappedBox);
 
             var saveBtn = new Button { Content = "Save", HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
             panel.Children.Add(saveBtn);
@@ -487,8 +483,6 @@ namespace FNFBot.App
                 s.HoldMaxMs = (int)((Slider)holdMaxRow.Children[1]).Value;
                 s.AutoFail = autoFailBox.IsChecked == true;
                 s.PressRate = (int)((Slider)pressRateRow.Children[1]).Value;
-                s.TargetFps = (int)((Slider)targetFpsRow.Children[1]).Value;
-                s.UncappedPressSpeed = uncappedBox.IsChecked == true;
                 _engine.ApplySettings();
                 win.Close();
             };

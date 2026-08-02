@@ -184,7 +184,6 @@ namespace FNFBot.Core
             _notes = notes;
             _holdTimes = new double[keyCount];
             _lastPressStopwatchTicks = new long[keyCount];
-            RecomputeRepressGap();
 
             _noteJitter = new double[_notes.Count];
             int j = 0;
@@ -644,36 +643,6 @@ namespace FNFBot.Core
             return j;
         }
 
-        // A game polling input once per rendered frame (~16.6ms at 60fps) can't see
-        // a KeyUp immediately followed by a KeyDown as two distinct edges. Chart
-        // spam sections (rapid repeats or literal duplicate-timestamp notes on the
-        // same lane) push presses closer together than that, which is what causes
-        // "sometimes doesn't press" - the up+down pair lands inside one poll and
-        // the game sees no change at all. Rather than force those unseeable presses
-        // (which also cascades into lateness on the notes right after, since the
-        // single play thread is the one doing the sending), we merge anything closer
-        // than this into the note already being held.
-        // A game polling input once per rendered frame can't see a KeyUp
-        // immediately followed by a KeyDown as two distinct edges. Chart spam
-        // sections (rapid repeats or literal duplicate-timestamp notes on the
-        // same lane) can push presses closer together than one frame, which is
-        // what causes "sometimes doesn't press" - the up+down pair lands inside
-        // one poll and the game sees no change at all. Rather than force those
-        // unseeable presses (which also cascades into lateness on the notes
-        // right after, since the single play thread is the one doing the
-        // sending), we merge anything closer than one frame into the note
-        // already being held. Derived from Settings.TargetFps rather than a
-        // fixed 60fps assumption, since FNF isn't frame-locked and commonly
-        // runs well above that (up to ~240fps).
-        private long _minRepressGapTicks;
-
-        private void RecomputeRepressGap()
-        {
-            double fps = Math.Max(30, Settings.TargetFps);
-            double gapMs = 1000.0 / fps;
-            _minRepressGapTicks = (long)(gapMs / 1000.0 * Stopwatch.Frequency);
-        }
-
         private void HandleNote(FNFSong.FNFNote n, double now, double jitter)
         {
             int dir = n.Lane;
@@ -685,18 +654,10 @@ namespace FNFBot.Core
             double pressLen = _rnd.Next(Settings.PressMinMs, Settings.PressMaxMs + 1);
             double holdExtra = _rnd.Next(Settings.HoldMinMs, Settings.HoldMaxMs + 1);
 
+            // Always uncapped: every note gets its own fresh KeyUp/KeyDown edge,
+            // no matter how close together notes on this lane land. No merging,
+            // no frame-derived minimum gap.
             long nowTicks = Stopwatch.GetTimestamp();
-            if (!Settings.UncappedPressSpeed &&
-                _holdTimes[dir] != 0 && nowTicks - _lastPressStopwatchTicks[dir] < _minRepressGapTicks)
-            {
-                // Too soon after the last press on this lane to read as a fresh
-                // edge - just extend/refresh the hold instead of a pointless
-                // up+down the game likely won't register anyway.
-                _holdTimes[dir] = shouldHold
-                    ? n.Time + n.Length + holdExtra + jitter
-                    : now + pressLen;
-                return;
-            }
 
             if (_holdTimes[dir] != 0)
             {
@@ -799,7 +760,6 @@ namespace FNFBot.Core
         public void ApplySettings()
         {
             Settings.Save();
-            RecomputeRepressGap();
             for (int i = 0; i < _noteJitter.Length && i < _notes.Count; i++)
                 _noteJitter[i] = _notes[i].Length > 0 ? 0 : ComputeJitter();
             SettingsChanged?.Invoke();

@@ -20,8 +20,6 @@ namespace FNFBot.Core
         public int HoldMaxMs = 90;      // hold release high bound
         public bool AutoFail = false;   // randomly miss notes
         public int PressRate = 100;     // accuracy 0-100 (100 = perfect)
-        public int TargetFps = 240;     // game's frame cap; sets the min gap between two presses on the same lane
-        public bool UncappedPressSpeed = false; // skip the min-gap merge entirely; can press faster than any real game loop could see
         public string[] KeyNames = { "Left", "Down", "Up", "Right" };
 
         public static BotSettings Load()
@@ -63,8 +61,6 @@ namespace FNFBot.Core
                         case "holdmax": s.HoldMaxMs = Math.Max(s.HoldMinMs, num); break;
                         case "autofail": s.AutoFail = num != 0; break;
                         case "pressrate": s.PressRate = Math.Max(0, Math.Min(100, num)); break;
-                        case "targetfps": s.TargetFps = Math.Max(30, Math.Min(1000, num)); break;
-                        case "uncappedpressspeed": s.UncappedPressSpeed = num != 0; break;
                         default:
                             if (key == "keynames")
                             {
@@ -89,8 +85,6 @@ namespace FNFBot.Core
                     $"pressmin={PressMinMs}\npressmax={PressMaxMs}\n" +
                     $"holdmin={HoldMinMs}\nholdmax={HoldMaxMs}\n" +
                     $"autofail={(AutoFail ? 1 : 0)}\npressrate={PressRate}\n" +
-                    $"targetfps={TargetFps}\n" +
-                    $"uncappedpressspeed={(UncappedPressSpeed ? 1 : 0)}\n" +
                     $"keynames={kn}\n");
             }
             catch { }
